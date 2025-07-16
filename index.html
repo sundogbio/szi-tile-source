@@ -3,8 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <title>SZI Tile Source Demo</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/openseadragon/5.0.1/openseadragon.min.js"></script>
 </head>
 <body>
-    <h1>Hi dere!</h1>
+    <h1>This is an uncompressed image!</h1>
+    <div id="openseadragon1" style="width: 800px; height: 600px;"></div>
+    <script type="text/javascript">
+        var viewer = OpenSeadragon({
+            id: "openseadragon1",
+            prefixUrl: "https://cdnjs.cloudflare.com/ajax/libs/openseadragon/5.0.1/images/",
+            tileSources: "examples/uncompressed/mixmas.dzi"
+        });
+    </script>
 </body>
 </html>
