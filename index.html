@@ -3,17 +3,27 @@
 <head>
     <meta charset="UTF-8">
     <title>SZI Tile Source Demo</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/openseadragon/5.0.1/openseadragon.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/openseadragon/5.0.1/openseadragon.js"></script>
 </head>
 <body>
     <h1>This is an uncompressed image!</h1>
     <div id="openseadragon1" style="width: 800px; height: 600px;"></div>
     <script type="text/javascript">
-        var viewer = OpenSeadragon({
-            id: "openseadragon1",
-            prefixUrl: "https://cdnjs.cloudflare.com/ajax/libs/openseadragon/5.0.1/images/",
-            tileSources: "examples/uncompressed/mixmas.dzi"
-        });
+
+        // Explicitly creating the TileSource to prove to myself that I understand how they work!
+        const url = 'examples/uncompressed/mixmas.dzi';
+        fetch(url).then(async response => {
+            const xml = await response.text();
+            const data = OpenSeadragon.parseXml(xml);
+            const options = OpenSeadragon.DziTileSource.prototype.configure(data, url, "");
+
+            const viewer = new OpenSeadragon.Viewer({
+                id: "openseadragon1",
+                prefixUrl: "https://cdnjs.cloudflare.com/ajax/libs/openseadragon/5.0.1/images/",
+                tileSources: new OpenSeadragon.DziTileSource(options)
+            });
+
+        })
     </script>
 </body>
 </html>
