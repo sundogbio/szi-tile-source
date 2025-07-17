@@ -4,9 +4,10 @@
     <meta charset="UTF-8">
     <title>SZI Tile Source Demo</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/openseadragon/5.0.1/openseadragon.js"></script>
+    <script type="module" src="src/main.js"></script>
 </head>
 <body>
-    <h1>This is an uncompressed image!</h1>
+    <h1>This is a dzi image!</h1>
     <div id="openseadragon1" style="width: 800px; height: 600px;"></div>
     <script type="text/javascript">
 
@@ -20,10 +21,31 @@
             const viewer = new OpenSeadragon.Viewer({
                 id: "openseadragon1",
                 prefixUrl: "https://cdnjs.cloudflare.com/ajax/libs/openseadragon/5.0.1/images/",
-                tileSources: new OpenSeadragon.DziTileSource(options)
+                tileSources: new OpenSeadragon.DziTileSource(options),
+                loadTilesWithAjax: true,
             });
 
         })
+    </script>
+    <h1>This is an szi image!</h1>
+    <div id="openseadragon2" style="width: 800px; height: 600px;"></div>
+    <script type="module">
+        import {enableSziTileSource} from "./src/main.js";
+
+        window.onload = function () {
+
+            enableSziTileSource(OpenSeadragon);
+
+            const sziUrl = 'http://localhost:5173/examples/compressed/mixmas.szi';
+            OpenSeadragon.SziTileSource.createSziTileSource(sziUrl).then(async tileSource => {
+                const viewer = new OpenSeadragon.Viewer({
+                    id: "openseadragon2",
+                    prefixUrl: "https://cdnjs.cloudflare.com/ajax/libs/openseadragon/5.0.1/images/",
+                    tileSources: [tileSource],
+                });
+
+            })
+        }
     </script>
 </body>
 </html>

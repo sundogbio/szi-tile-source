@@ -322,7 +322,82 @@ export const enableSziTileSource = (OpenSeadragon) => {
 
       return new SziTileSource(contents, urlMapper, options);
     };
+
+    /**
+     * Download tile data.
+     * Note that if you override this function, you should override also downloadTileAbort().
+     * @param {ImageJob} context job context that you have to call finish(...) on.
+     * @param {String} [context.src] - URL of image to download.
+     * @param {String} [context.loadWithAjax] - Whether to load this image with AJAX.
+     * @param {String} [context.ajaxHeaders] - Headers to add to the image request if using AJAX.
+     * @param {Boolean} [context.ajaxWithCredentials] - Whether to set withCredentials on AJAX requests.
+     * @param {String} [context.crossOriginPolicy] - CORS policy to use for downloads
+     * @param {?String|?Object} [context.postData] - HTTP POST data (usually but not necessarily
+     *   in k=v&k2=v2... form, see TileSource::getTilePostData) or null
+     * @param {*} [context.userData] - Empty object to attach your own data and helper variables to.
+     * @param {Function} [context.finish] - Should be called unless abort() was executed upon successful
+     *   data retrieval.
+     *   Usage: context.finish(data, request, dataType=undefined). Pass the downloaded data object
+     *   add also reference to an ajax request if used. Optionally, specify what data type the data is.
+     * @param {Function} [context.fail] - Should be called unless abort() was executed upon unsuccessful request.
+     *   Usage: context.fail(errMessage, request). Provide error message in case of failure,
+     *   add also reference to an ajax request if used.
+     * @param {Function} [context.abort] - Called automatically when the job times out.
+     *   Usage: if you decide to abort the request (no fail/finish will be called), call context.abort().
+     * @param {Function} [context.callback] Private parameter. Called automatically once image has been downloaded
+     *   (triggered by finish).
+     * @param {Number} [context.timeout] Private parameter. The max number of milliseconds that
+     *   this image job may take to complete.
+     * @param {string} [context.errorMsg] Private parameter. The final error message, default null (set by finish).
+     */
+    downloadTileStart = (context) => {
+      const dziUrl = context.src;
+      const dziRange = this.contents.get(this.urlMapper.pathInSziFromDziUrl(dziUrl));
+      if (!dziRange) {
+        throw new Error('.dzi file not found in .szi file');
+      }
+
+      fetchRange(this.urlMapper.sziParsedUrl.href, dziRange.start, dziRange.end).then(
+        (arrayBuffer) => {
+          context.finish(new Blob([arrayBuffer], { type: 'image/jpeg' }), null, 'rasterBlob');
+        },
+        (error) => {
+          context.fail('[downloadTileStart] Image load aborted: ' + error, null);
+        },
+      );
+    };
+
+    /**
+     * Provide means of aborting the execution.
+     * Note that if you override this function, you should override also downloadTileStart().
+     * Note that calling job.abort() would create an infinite loop!
+     *
+     * @param {ImageJob} context job, the same object as with downloadTileStart(..)
+     * @param {*} [context.userData] - Empty object to attach (and mainly read) your own data.
+     */
+    downloadTileAbort = (context) => {
+      if (context.userData.request) {
+        context.userData.request.abort();
+      }
+      var image = context.userData.image;
+      if (context.userData.image) {
+        image.onload = image.onerror = image.onabort = null;
+      }
+    };
   }
 
   OpenSeadragon.SziTileSource = SziTileSource;
 };
+
+(function (global, factory) {
+  // Skip if currently in ESM mode
+  if (typeof exports === 'undefined') {
+    return;
+  }
+
+  // Check if OpenSeadragon is available
+  if (typeof global.OpenSeadragon !== 'undefined') {
+    // Attach the GeoTIFFTileSource to the OpenSeadragon namespace
+    factory(global.OpenSeadragon);
+  }
+})(typeof window !== 'undefined' ? window : this, enableSziTileSource);
