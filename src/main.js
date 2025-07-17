@@ -1,8 +1,18 @@
+/**
+ * Fetch the range of bytes specified. Note that end is *exclusive*, though the header
+ * expects *inclusive* values. This removes the need to continually subtract 1 from
+ * the more usual end-exclusive values used elsewhere.
+ *
+ * @param url
+ * @param start
+ * @param end
+ * @returns {Promise<ArrayBuffer>}
+ */
 export async function fetchRange(url, start, end) {
   try {
     const response = await fetch(url, {
       headers: {
-        Range: `bytes=${start}-${end}`,
+        Range: `bytes=${start}-${end - 1}`,
       },
     });
 
@@ -12,7 +22,7 @@ export async function fetchRange(url, start, end) {
 
     return await response.arrayBuffer();
   } catch (error) {
-    console.error(`Error fetching range ${start}-${end}:`, error);
+    console.error(`Error fetching range ${start}-${end - 1}:`, error);
     throw error;
   }
 }
@@ -246,3 +256,73 @@ export async function getContentsOfSziFile(url) {
   const centralDirectory = readCentralDirectory(cdArrayBuffer, eocd.totalEntries);
   return generateMapOfFileBodyLocations(centralDirectory);
 }
+
+export class UrlMapper {
+  constructor(sziUrl) {
+    this.sziParsedUrl = URL.parse(sziUrl);
+    if (!this.sziParsedUrl) {
+      throw new Error('Invalid Szi Tile Source URL!');
+    }
+
+    const sziPathParts = this.sziParsedUrl.pathname.split('/');
+    if (!sziPathParts.length) {
+      throw new Error('Invalid Szi Tile Source URL!');
+    }
+
+    const sziFilename = sziPathParts.at(-1);
+    if (!sziFilename || !sziFilename.endsWith('.szi')) {
+      throw new Error(`Invalid Szi Tile Source filename: ${sziFilename}`);
+    }
+
+    this.sziFilenameWithoutSuffix = sziFilename.substring(0, sziFilename.length - 4);
+    this.sziPathWithoutFilename = sziPathParts.slice(0, -1).join('/') + '/';
+  }
+
+  pathInSziFromDziUrl(dziUrl) {
+    const dziParsedUrl = URL.parse(dziUrl);
+    if (!dziParsedUrl.pathname.startsWith(this.sziPathWithoutFilename)) {
+      throw new Error('Invalid Dzi Tile Source URL!');
+    }
+
+    return dziParsedUrl.pathname.substring(this.sziPathWithoutFilename.length);
+  }
+
+  dziXmlUrl() {
+    const url = this.sziParsedUrl.href;
+    const dziParsedUrl = URL.parse(url);
+    dziParsedUrl.pathname = `${this.sziPathWithoutFilename}${this.sziFilenameWithoutSuffix}/${this.sziFilenameWithoutSuffix}.dzi`;
+    return dziParsedUrl.href;
+  }
+}
+
+export const enableSziTileSource = (OpenSeadragon) => {
+  class SziTileSource extends OpenSeadragon.DziTileSource {
+    constructor(contents, urlMapper, options = {}) {
+      super(options);
+      this.contents = contents;
+      this.urlMapper = urlMapper;
+    }
+
+    static createSziTileSource = async (url) => {
+      const contents = await getContentsOfSziFile(url);
+      const urlMapper = new UrlMapper(url);
+
+      const dziXmlUrl = urlMapper.dziXmlUrl();
+
+      const dziRange = contents.get(urlMapper.pathInSziFromDziUrl(dziXmlUrl));
+      if (!dziRange) {
+        throw new Error('.dzi file not found in .szi file');
+      }
+
+      const dziArrayBuffer = await fetchRange(url, dziRange.start, dziRange.end);
+      const dziXmlText = new TextDecoder().decode(new Uint8Array(dziArrayBuffer));
+      const dziXml = OpenSeadragon.parseXml(dziXmlText);
+
+      const options = OpenSeadragon.DziTileSource.prototype.configure(dziXml, dziXmlUrl, '');
+
+      return new SziTileSource(contents, urlMapper, options);
+    };
+  }
+
+  OpenSeadragon.SziTileSource = SziTileSource;
+};
