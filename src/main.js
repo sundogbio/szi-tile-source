@@ -89,14 +89,35 @@ export class LittleEndianDataReader {
     return num;
   }
 
+  readUint64() {
+    const posAfterRead = this.pos + 8;
+    this.checkBounds(posAfterRead);
+
+    const bigInt = this.view.getBigUint64(this.pos, true);
+    this.pos = posAfterRead;
+
+    if (bigInt > Number.MAX_SAFE_INTEGER) {
+      // TODO: this is to stop things getting messy, and we can probably lift it later
+      // TODO: but for now it means that we can use numbers everywhere...
+      throw new Error('Only values upto 2^53 are supported!');
+    }
+
+    return Number(bigInt);
+  }
+
   readString(len) {
+    const bytes = this.readUint8Array(len);
+    return new TextDecoder().decode(bytes);
+  }
+
+  readUint8Array(len) {
     const posAfterRead = this.pos + len;
     this.checkBounds(posAfterRead);
 
     const bytes = new Uint8Array(this.buffer, this.pos, len);
     this.pos = posAfterRead;
 
-    return new TextDecoder().decode(bytes);
+    return bytes;
   }
 
   skip(len) {
@@ -113,10 +134,16 @@ export class LittleEndianDataReader {
 }
 
 // Some standard zip sizes in bytes
-const maxCommentSize = 0xffff;
+const maxUint32 = 0xffffffff;
+const maxUint16 = 0xffff;
+
+const maxCommentSize = maxUint16;
 const eocdSizeWithoutComment = 22;
 const zip64EocdLocatorSize = 20;
 const fixedLocalHeaderSize = 30;
+const zip64EocdRecordSizeBetweenSizeAndExtensibleFields = 34;
+
+const zip64ExtraFieldHeaderId = 0x0001;
 
 /**
  * Searches backwards in the supplied bytesToSearchIn for the bytesToFind
@@ -146,7 +173,18 @@ function findBackwards(bytesToSearchIn, bytesToFind) {
   return -1;
 }
 
-function readEocd(reader) {
+function findStartOfEocd(arrayBuffer) {
+  const startOfEocdsInBytes = findBackwards(new Uint8Array(arrayBuffer), new Uint8Array([0x50, 0x4b, 0x05, 0x06]));
+  if (startOfEocdsInBytes === -1) {
+    throw new Error('Invalid SZI file, no End Of Central Directory Record found');
+  }
+  return startOfEocdsInBytes;
+}
+
+function readEocd(arrayBuffer, startPositionInBuffer) {
+  const reader = new LittleEndianDataReader(arrayBuffer);
+  reader.skip(startPositionInBuffer);
+
   const magicNumber = reader.readUint32();
   const diskNumber = reader.readUint16();
   const startOfCdDiskNumber = reader.readUint16();
@@ -160,16 +198,85 @@ function readEocd(reader) {
   return { totalEntries, centralDirectorySize, centralDirectoryOffset };
 }
 
-function findAndReadEocd(eocdArrayBuffer) {
-  const startOfEocdsInBytes = findBackwards(new Uint8Array(eocdArrayBuffer), new Uint8Array([0x50, 0x4b, 0x05, 0x06]));
-  if (startOfEocdsInBytes === -1) {
-    throw new Error('Invalid SZI file, no End Of Central Directory Record found');
+function readZip64EocdLocator(arrayBuffer, startPositionInBuffer) {
+  const reader = new LittleEndianDataReader(arrayBuffer);
+  reader.skip(startPositionInBuffer);
+
+  const magicNumber = reader.readUint32();
+  const diskNumber = reader.readUint32();
+  const zip64EocdOffset = reader.readUint64();
+  const totalNumberOfDisks = reader.readUint32();
+
+  return { zip64EocdOffset };
+}
+
+function readZip64EocdRecord(arrayBuffer, startPositionInBuffer) {
+  const reader = new LittleEndianDataReader(arrayBuffer);
+  reader.skip(startPositionInBuffer);
+
+  const magicNumber = reader.readUint32();
+  const sizeOfEocdRecord = reader.readUint64() + 12; // as read, doesn't include this and previous field
+  const versionMadeBy = reader.readUint16();
+  const versionNeededToExtract = reader.readUint16();
+  const diskNumber = reader.readUint32();
+  const startOfEocdDiskNumber = reader.readUint32();
+  const entriesOnDisk = reader.readUint64();
+  const totalEntries = reader.readUint64();
+  const centralDirectorySize = reader.readUint64();
+  const centralDirectoryOffset = reader.readUint64();
+
+  // There is an additional "zip64 extensible data sector" here, but it is
+  // "currently reserved for use by PKWARE", so we are just skipping it for now
+  const sizeOfExtensibleDataSector = sizeOfEocdRecord - reader.pos - startPositionInBuffer;
+  reader.skip(sizeOfExtensibleDataSector);
+
+  return { totalEntries, centralDirectorySize, centralDirectoryOffset };
+}
+
+function readZip64ExtraFields(reader, length, fields) {
+  let { compressedSize, uncompressedSize, diskNumberStart, relativeOffsetOfLocalHeader } = fields;
+  let sizeOfExtraFieldsNotInLocalHeader = 0;
+
+  const initialPos = reader.pos;
+
+  while (reader.pos - initialPos < length) {
+    const headerId = reader.readUint16();
+    const dataBlockSize = reader.readUint16();
+    if (headerId === zip64ExtraFieldHeaderId) {
+      if (uncompressedSize === maxUint32) {
+        uncompressedSize = reader.readUint64();
+      }
+
+      if (compressedSize === maxUint32) {
+        compressedSize = reader.readUint64();
+      }
+
+      if (relativeOffsetOfLocalHeader === maxUint32) {
+        sizeOfExtraFieldsNotInLocalHeader += 8;
+        relativeOffsetOfLocalHeader = reader.readUint64();
+      }
+
+      if (diskNumberStart === maxUint16) {
+        sizeOfExtraFieldsNotInLocalHeader += 4;
+        diskNumberStart = reader.readUint32();
+      }
+
+      // If this block is empty, it's header and size won't be included either!
+      if (sizeOfExtraFieldsNotInLocalHeader === dataBlockSize) {
+        sizeOfExtraFieldsNotInLocalHeader += 4;
+      }
+    } else {
+      reader.skip(dataBlockSize);
+    }
   }
 
-  const eocdReader = new LittleEndianDataReader(eocdArrayBuffer);
-  eocdReader.skip(startOfEocdsInBytes);
-
-  return readEocd(eocdReader);
+  return {
+    compressedSize,
+    uncompressedSize,
+    diskNumberStart,
+    relativeOffsetOfLocalHeader,
+    sizeOfExtraFieldsNotInLocalHeader,
+  };
 }
 
 function readCentralDirectory(cdArrayBuffer, totalEntries) {
@@ -201,24 +308,29 @@ function readCentralDirectory(cdArrayBuffer, totalEntries) {
     const filenameLength = reader.readUint16();
     const extraFieldLength = reader.readUint16();
     const fileCommentLength = reader.readUint16();
-
     const diskNumberStart = reader.readUint16();
     const internalFileAttributes = reader.readUint16();
     const externalFileAttributes = reader.readUint32();
     const relativeOffsetOfLocalHeader = reader.readUint32();
 
     const filename = reader.readString(filenameLength);
-    const extraField = reader.readString(extraFieldLength);
+
+    const extraFields = readZip64ExtraFields(reader, extraFieldLength, {
+      compressedSize,
+      uncompressedSize,
+      diskNumberStart,
+      relativeOffsetOfLocalHeader,
+    });
     const fileComment = reader.readString(fileCommentLength);
 
     centralDirectory.push({
-      compressedSize,
-      uncompressedSize,
-      relativeOffsetOfLocalHeader,
+      compressedSize: extraFields.compressedSize,
+      uncompressedSize: extraFields.uncompressedSize,
+      relativeOffsetOfLocalHeader: extraFields.relativeOffsetOfLocalHeader,
       filename,
-      extraField,
       filenameLength,
       extraFieldLength,
+      sizeOfExtraFieldsNotInLocalHeader: extraFields.sizeOfExtraFieldsNotInLocalHeader,
     });
   }
   return centralDirectory;
@@ -229,7 +341,11 @@ function generateMapOfFileBodyLocations(centralDirectory) {
     // Assume that the extra fields on the local header are the same length of those
     // on the central directory entry. This feels a bit ehhhhh....
     const start =
-      entry.relativeOffsetOfLocalHeader + fixedLocalHeaderSize + entry.filenameLength + entry.extraFieldLength;
+      entry.relativeOffsetOfLocalHeader +
+      fixedLocalHeaderSize +
+      entry.filenameLength +
+      entry.extraFieldLength -
+      entry.sizeOfExtraFieldsNotInLocalHeader;
     const end = start + entry.uncompressedSize;
 
     filenameToLocation.set(entry.filename, { start, end });
@@ -237,23 +353,57 @@ function generateMapOfFileBodyLocations(centralDirectory) {
   }, new Map());
 }
 
+function wrapFetchRangeWithBoundsChecksForFileSize(fileSize) {
+  return async (url, start, end) => {
+    if (start < 0 || start > fileSize) {
+      throw new Error(`Start of fetch range (${start}) out of bounds (0 - ${fileSize})!`);
+    }
+
+    if (end < 0 || end > fileSize) {
+      throw new Error(`Start of fetch range (${start}) out of bounds (0 - ${fileSize})!`);
+    }
+
+    if (start > end) {
+      throw new Error(`Start of fetch range (${start}) greater than end (${end})!`);
+    }
+
+    return await fetchRange(url, start, end);
+  };
+}
+
 export async function getContentsOfSziFile(url) {
   const fileSize = await fetchContentLength(url);
 
-  const minStartOfEocds = fileSize - (zip64EocdLocatorSize + eocdSizeWithoutComment + maxCommentSize);
-  const eocdArrayBuffer = await fetchRange(url, Math.max(0, minStartOfEocds), fileSize);
-  const eocd = findAndReadEocd(eocdArrayBuffer);
+  const fetchCheckedRange = wrapFetchRangeWithBoundsChecksForFileSize(fileSize);
 
-  if (eocd.centralDirectoryOffset === 0xffff || eocd.centralDirectorySize === 0xffff) {
-    throw Error('Yikes, this looks like a zip64, deal with this later');
+  const minEocdsOffset = fileSize - (zip64EocdLocatorSize + eocdSizeWithoutComment + maxCommentSize);
+  const eocdArrayBuffer = await fetchCheckedRange(url, Math.max(0, minEocdsOffset), fileSize);
+
+  const startOfEocdInBuffer = findStartOfEocd(eocdArrayBuffer);
+
+  let { totalEntries, centralDirectoryOffset, centralDirectorySize } = readEocd(eocdArrayBuffer, startOfEocdInBuffer);
+  const zip64 =
+    totalEntries === maxUint16 || centralDirectoryOffset === maxUint32 || centralDirectorySize === maxUint32;
+
+  if (zip64) {
+    const startOfZip64EocdLocatorInBuffer = startOfEocdInBuffer - zip64EocdLocatorSize;
+    const zip64EocdLocator = readZip64EocdLocator(eocdArrayBuffer, startOfZip64EocdLocatorInBuffer);
+
+    const zip64EocdBuffer = await fetchCheckedRange(
+      url,
+      zip64EocdLocator.zip64EocdOffset,
+      minEocdsOffset + startOfZip64EocdLocatorInBuffer,
+    );
+
+    ({ totalEntries, centralDirectoryOffset, centralDirectorySize } = readZip64EocdRecord(zip64EocdBuffer, 0));
   }
 
-  const cdArrayBuffer = await fetchRange(
+  const cdArrayBuffer = await fetchCheckedRange(
     url,
-    eocd.centralDirectoryOffset,
-    eocd.centralDirectoryOffset + eocd.centralDirectorySize,
+    centralDirectoryOffset,
+    centralDirectoryOffset + centralDirectorySize,
   );
-  const centralDirectory = readCentralDirectory(cdArrayBuffer, eocd.totalEntries);
+  const centralDirectory = readCentralDirectory(cdArrayBuffer, totalEntries);
   return generateMapOfFileBodyLocations(centralDirectory);
 }
 
