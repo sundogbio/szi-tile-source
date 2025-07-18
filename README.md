@@ -11,7 +11,7 @@ And get the local vite server running
 
 `npx vite`
 
-You can see a lovely *dzi* tiled image of Mix if you go to [http://localhost:5137](http://localhost:5137).
+You can see a lovely *dzi* tiled image of Mix if you go to [http://localhost:5173](http://localhost:5173).
 
 You can also run the test in `src/main.test.js` that tests the basic business of extracting the file table of
 contents from an *szi* tiled image of Mix. Either run
