@@ -14,7 +14,7 @@
             <script type="text/javascript">
 
                 // Explicitly creating the TileSource to prove to myself that I understand how they work!
-                const url = 'examples/uncompressed/mixmas.dzi';
+                const url = 'examples/unzipped/mixmas.dzi';
                 fetch(url).then(async response => {
                     const xml = await response.text();
                     const data = OpenSeadragon.parseXml(xml);
@@ -40,7 +40,7 @@
 
                     enableSziTileSource(OpenSeadragon);
 
-                    const sziUrl = 'examples/compressed/mixmas.szi';
+                    const sziUrl = 'examples/zipped/mixmas.szi';
                     OpenSeadragon.SziTileSource.createSziTileSource(sziUrl).then(async tileSource => {
                         const viewer = new OpenSeadragon.Viewer({
                             id: "openseadragon2",
