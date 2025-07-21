@@ -407,74 +407,53 @@ export async function getContentsOfSziFile(url) {
   return generateMapOfFileBodyLocations(centralDirectory);
 }
 
-export class UrlMapper {
-  constructor(sziUrl, baseUrl) {
-    this.sziParsedUrl = URL.parse(sziUrl, baseUrl);
-    if (!this.sziParsedUrl) {
-      throw new Error('Invalid Szi Tile Source URL!');
+const findDziXmlPathInContents = (contents) => {
+  let dziXmlPath = '';
+  for (const path of contents.keys()) {
+    if (path.endsWith('.dzi')) {
+      const parts = path.split('/');
+      if (parts.length === 2) {
+        const lastButOnePart = parts.at(-2);
+        const lastPart = parts.at(-1);
+        if (`${lastButOnePart}.dzi` === lastPart) {
+          if (dziXmlPath) {
+            throw new Error('Multiple .dzi files found in .szi!');
+          } else {
+            dziXmlPath = path;
+          }
+        }
+      }
     }
-
-    const sziPathParts = this.sziParsedUrl.pathname.split('/');
-    if (!sziPathParts.length) {
-      throw new Error('Invalid Szi Tile Source URL!');
-    }
-
-    const sziFilename = sziPathParts.at(-1);
-    if (!sziFilename || !sziFilename.endsWith('.szi')) {
-      throw new Error(`Invalid Szi Tile Source filename: ${sziFilename}`);
-    }
-
-    this.sziFilenameWithoutSuffix = sziFilename.substring(0, sziFilename.length - 4);
-    this.sziPathWithoutFilename = sziPathParts.slice(0, -1).join('/') + '/';
   }
-
-  pathInSziFromDziUrl(dziUrl) {
-    const dziParsedUrl = URL.parse(dziUrl);
-    if (!dziParsedUrl.pathname.startsWith(this.sziPathWithoutFilename)) {
-      throw new Error('Invalid Dzi Tile Source URL!');
-    }
-
-    return dziParsedUrl.pathname.substring(this.sziPathWithoutFilename.length);
-  }
-
-  dziXmlUrl() {
-    const url = this.sziParsedUrl.href;
-    const dziParsedUrl = URL.parse(url);
-    dziParsedUrl.pathname = `${this.sziPathWithoutFilename}${this.sziFilenameWithoutSuffix}/${this.sziFilenameWithoutSuffix}.dzi`;
-    return dziParsedUrl.href;
-  }
+  return dziXmlPath;
 }
 
 export const enableSziTileSource = (OpenSeadragon) => {
   class SziTileSource extends OpenSeadragon.DziTileSource {
-    constructor(contents, urlMapper, options = {}) {
+    constructor(contents, sziUrl, options = {}) {
       super(options);
       this.contents = contents;
-      this.urlMapper = urlMapper;
+      this.sziUrl = sziUrl;
     }
 
     static createSziTileSource = async (url) => {
       const contents = await getContentsOfSziFile(url);
 
-      // Allow relative URLs if we are in a window. I don't particularly like doing it like this
-      // so it might move outwards if/when I refactor the szi reading code into its own object
-      const baseUrl = window?.location?.href;
-      const urlMapper = new UrlMapper(url, baseUrl);
-
-      const dziXmlUrl = urlMapper.dziXmlUrl();
-
-      const dziRange = contents.get(urlMapper.pathInSziFromDziUrl(dziXmlUrl));
-      if (!dziRange) {
-        throw new Error('.dzi file not found in .szi file');
+      //Find dziXmlPath
+      const dziXmlPath = findDziXmlPathInContents(contents);
+      if (!dziXmlPath) {
+        throw new Error('No dzi file found in .szi!');
       }
+
+      const dziRange = contents.get(dziXmlPath);
 
       const dziArrayBuffer = await fetchRange(url, dziRange.start, dziRange.end);
       const dziXmlText = new TextDecoder().decode(new Uint8Array(dziArrayBuffer));
       const dziXml = OpenSeadragon.parseXml(dziXmlText);
 
-      const options = OpenSeadragon.DziTileSource.prototype.configure(dziXml, dziXmlUrl, '');
+      const options = OpenSeadragon.DziTileSource.prototype.configure(dziXml, dziXmlPath, '');
 
-      return new SziTileSource(contents, urlMapper, options);
+      return new SziTileSource(contents, url, options);
     };
 
     /**
@@ -520,12 +499,12 @@ export const enableSziTileSource = (OpenSeadragon) => {
       context.userData.request = null;
 
       const dziUrl = context.src;
-      const dziRange = this.contents.get(this.urlMapper.pathInSziFromDziUrl(dziUrl));
+      const dziRange = this.contents.get(dziUrl);
       if (!dziRange) {
         throw new Error('.dzi file not found in .szi file');
       }
 
-      fetchRange(this.urlMapper.sziParsedUrl.href, dziRange.start, dziRange.end).then(
+      fetchRange(this.sziUrl, dziRange.start, dziRange.end).then(
         (arrayBuffer) => {
           const imageBlob = new Blob([arrayBuffer], { type: 'image/jpeg' });
           if (imageBlob.size === 0) {
