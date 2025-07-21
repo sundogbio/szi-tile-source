@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  */
-import { enableSziTileSource, extractDziPathAndUrl, getContentsOfSziFile, UrlMapper } from './main.js';
+import { enableSziTileSource, extractDziPathAndUrl, getContentsOfRemoteSziFile, UrlMapper } from './main.js';
 import { expect, test } from 'vitest';
 import OpenSeadragon from 'openseadragon';
 
@@ -9,7 +9,7 @@ import OpenSeadragon from 'openseadragon';
 // that you have done 'npx vite' to serve up the examples on a local server to
 // to start with
 test('Test contents', { timeout: 300_000 }, async () => {
-  const contents = await getContentsOfSziFile('http://localhost:5173/examples/zipped/mixmas.szi');
+  const contents = await getContentsOfRemoteSziFile('http://localhost:5173/examples/zipped/mixmas.szi');
   expect(contents.size).toBe(150);
 });
 

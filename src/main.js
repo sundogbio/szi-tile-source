@@ -48,6 +48,43 @@ export async function fetchContentLength(url) {
 }
 
 /**
+ * Represents a remote file that we are going to try and read from
+ */
+class RemoteFile {
+  /**
+   * Create the remote file by fetching its size using a head request
+   *
+   * @param url url of the file that we eventually want to read
+   * @returns {Promise<RemoteFile>}
+   */
+  static create = async (url) => {
+    const size = await fetchContentLength(url);
+    return new RemoteFile(url, size);
+  };
+
+  constructor(url, size) {
+    this.url = url;
+    this.size = size;
+  }
+
+  fetchRange = async (start, end) => {
+    if (start < 0 || start > this.size) {
+      throw new Error(`Start of fetch range (${start}) out of bounds (0 - ${this.size})!`);
+    }
+
+    if (end < 0 || end > this.size) {
+      throw new Error(`Start of fetch range (${start}) out of bounds (0 - ${this.size})!`);
+    }
+
+    if (start > end) {
+      throw new Error(`Start of fetch range (${start}) greater than end (${end})!`);
+    }
+
+    return await fetchRange(this.url, start, end);
+  };
+}
+
+/**
  * Wrapper around an ArrayBuffer that allows sequential reading of Uint16,
  * Uint32 and UTF-8 strings, without the need for having to keep track of
  * where you are in the buffer. Will also throw an error if you attempt to
@@ -125,11 +162,6 @@ export class LittleEndianDataReader {
     this.checkBounds(posAfterSkip);
 
     this.pos = posAfterSkip;
-  }
-
-  reset(pos) {
-    this.checkBounds(pos);
-    this.pos = pos;
   }
 }
 
@@ -235,8 +267,6 @@ function readZip64EocdRecord(arrayBuffer, startPositionInBuffer) {
 
 function readZip64ExtraFields(reader, length, fields) {
   let { compressedSize, uncompressedSize, diskNumberStart, relativeOffsetOfLocalHeader } = fields;
-  let sizeOfExtraFieldsNotInLocalHeader = 0;
-
   const initialPos = reader.pos;
 
   while (reader.pos - initialPos < length) {
@@ -259,7 +289,7 @@ function readZip64ExtraFields(reader, length, fields) {
         diskNumberStart = reader.readUint32();
       }
 
-      // If this block is empty, it's header and size won't be included either!
+      // If this block is empty, its header and size won't be included either!
     } else {
       reader.skip(dataBlockSize);
     }
@@ -273,8 +303,8 @@ function readZip64ExtraFields(reader, length, fields) {
   };
 }
 
-function readCentralDirectory(cdArrayBuffer, totalEntries) {
-  const reader = new LittleEndianDataReader(cdArrayBuffer);
+function readCentralDirectory(arrayBuffer, totalEntries) {
+  const reader = new LittleEndianDataReader(arrayBuffer);
   const centralDirectory = [];
   for (let i = 0; i < totalEntries; i++) {
     const magicNumber = reader.readUint32();
@@ -327,146 +357,165 @@ function readCentralDirectory(cdArrayBuffer, totalEntries) {
   return centralDirectory;
 }
 
-function generateMapOfFileBodyLocations(centralDirectory, startOffsetToMaxEndOffset) {
-  return centralDirectory.reduce((filenameToLocation, entry) => {
-    const start = entry.relativeOffsetOfLocalHeader;
-    const end = startOffsetToMaxEndOffset.get(start);
-    const length = entry.uncompressedSize;
+/**
+ * Generate a map from the start of a file's entry in the .szi to an upper bound on its end, the latter being
+ * either the start of the next file in the .szi, or the beginning of the central directory structures.
+ *
+ * @param centralDirectory
+ * @param centralDirectoryOffset
+ * @returns Map<number, number>
+ */
+function mapEntryStartToMaxEntryEnd(centralDirectory, centralDirectoryOffset) {
+  const entryToStartToMaxEntryEnd = new Map();
 
-    filenameToLocation.set(entry.filename, { start, end, length });
+  // Get the entry offsets in descending order
+  const entryStarts = centralDirectory.map((entry) => entry.relativeOffsetOfLocalHeader);
+  entryStarts.sort((a, b) => b - a);
+
+  if (centralDirectory.length > 0) {
+    //...so we can do the special case of the highest offset first
+    let maxEntryEnd = centralDirectoryOffset;
+    for (const entryStart of entryStarts) {
+      entryToStartToMaxEntryEnd.set(entryStart, maxEntryEnd);
+      maxEntryEnd = entryStart;
+    }
+  }
+
+  return entryToStartToMaxEntryEnd;
+}
+
+/**
+ * Create a map of filenames to the start of their entries in the .szi, an upper bound on the end of their
+ * entries, and the expected length of the file body. The start here is the start of the header, with
+ * the upper bound being the start of the next entry in the .szi or the beginning of the central directory
+ * structure.
+ *
+ * We need to do this because it's not possible to reliably predict the size of an entry's local header,
+ * which means we have to fetch enough data to make sure we have both the header and the body when reading
+ * the file, and the only way to do this is to read up until the next point in the file where we know for
+ * sure that something different is happening.
+ *
+ * @param centralDirectory
+ * @param centralDirectoryOffset
+ * @returns Map<string, { entryStart, maxEntryEnd, bodyLength}>
+ */
+function createTableOfContents(centralDirectory, centralDirectoryOffset) {
+  const entryStartToMaxEntryEnd = mapEntryStartToMaxEntryEnd(centralDirectory, centralDirectoryOffset);
+
+  return centralDirectory.reduce((filenameToLocation, entry) => {
+    const entryStart = entry.relativeOffsetOfLocalHeader;
+    const maxEntryEnd = entryStartToMaxEntryEnd.get(entryStart);
+    const bodyLength = entry.uncompressedSize;
+
+    filenameToLocation.set(entry.filename, { entryStart, maxEntryEnd, bodyLength });
     return filenameToLocation;
   }, new Map());
 }
 
-function wrapFetchRangeWithBoundsChecksForFileSize(fileSize) {
-  return async (url, start, end) => {
-    if (start < 0 || start > fileSize) {
-      throw new Error(`Start of fetch range (${start}) out of bounds (0 - ${fileSize})!`);
-    }
-
-    if (end < 0 || end > fileSize) {
-      throw new Error(`Start of fetch range (${start}) out of bounds (0 - ${fileSize})!`);
-    }
-
-    if (start > end) {
-      throw new Error(`Start of fetch range (${start}) greater than end (${end})!`);
-    }
-
-    return await fetchRange(url, start, end);
-  };
-}
-
-export async function getContentsOfSziFile(url) {
-  const fileSize = await fetchContentLength(url);
-
-  const fetchCheckedRange = wrapFetchRangeWithBoundsChecksForFileSize(fileSize);
-
-  const minEocdsOffset = fileSize - (zip64EocdLocatorSize + eocdSizeWithoutComment + maxCommentSize);
-  const eocdArrayBuffer = await fetchCheckedRange(url, Math.max(0, minEocdsOffset), fileSize);
-
+export async function getContentsOfRemoteSziFile(remoteFile) {
+  const minEocdsOffset = remoteFile.size - (zip64EocdLocatorSize + eocdSizeWithoutComment + maxCommentSize);
+  const eocdArrayBuffer = await remoteFile.fetchRange(Math.max(0, minEocdsOffset), remoteFile.size);
   const startOfEocdInBuffer = findStartOfEocd(eocdArrayBuffer);
-  let eocdLikeThingsStartOffset = minEocdsOffset + startOfEocdInBuffer;
-
   let { totalEntries, centralDirectoryOffset, centralDirectorySize } = readEocd(eocdArrayBuffer, startOfEocdInBuffer);
+
   const zip64 =
     totalEntries === maxUint16 || centralDirectoryOffset === maxUint32 || centralDirectorySize === maxUint32;
-
   if (zip64) {
     const startOfZip64EocdLocatorInBuffer = startOfEocdInBuffer - zip64EocdLocatorSize;
     const zip64EocdLocator = readZip64EocdLocator(eocdArrayBuffer, startOfZip64EocdLocatorInBuffer);
 
-    eocdLikeThingsStartOffset = zip64EocdLocator.zip64EocdOffset;
-
-    const zip64EocdBuffer = await fetchCheckedRange(
-      url,
+    const zip64EocdBuffer = await remoteFile.fetchRange(
       zip64EocdLocator.zip64EocdOffset,
       minEocdsOffset + startOfZip64EocdLocatorInBuffer,
     );
-
     ({ totalEntries, centralDirectoryOffset, centralDirectorySize } = readZip64EocdRecord(zip64EocdBuffer, 0));
   }
 
-  const cdArrayBuffer = await fetchCheckedRange(
-    url,
+  const cdArrayBuffer = await remoteFile.fetchRange(
     centralDirectoryOffset,
     centralDirectoryOffset + centralDirectorySize,
   );
-
   const centralDirectory = readCentralDirectory(cdArrayBuffer, totalEntries);
 
-  const startOffsetToMaxEndOffset = new Map();
-  const entryOffsets = centralDirectory.map((entry) => entry.relativeOffsetOfLocalHeader);
-  entryOffsets.sort((a, b) => a - b);
-  for (let i = 0; i < entryOffsets.length - 1; i++) {
-    startOffsetToMaxEndOffset.set(entryOffsets[i], entryOffsets[i + 1]);
-  }
-
-  if (entryOffsets.length > 0) {
-    startOffsetToMaxEndOffset.set(entryOffsets.at(-1), eocdLikeThingsStartOffset);
-  }
-
-  return generateMapOfFileBodyLocations(centralDirectory, startOffsetToMaxEndOffset);
+  return createTableOfContents(centralDirectory, centralDirectoryOffset);
 }
 
-const findDziXmlPathInContents = (contents) => {
-  let dziXmlPath = '';
-  for (const path of contents.keys()) {
-    if (path.endsWith('.dzi')) {
-      const parts = path.split('/');
-      if (parts.length === 2) {
-        const lastButOnePart = parts.at(-2);
-        const lastPart = parts.at(-1);
-        if (`${lastButOnePart}.dzi` === lastPart) {
-          if (dziXmlPath) {
-            throw new Error('Multiple .dzi files found in .szi!');
-          } else {
-            dziXmlPath = path;
-          }
+class RemoteSziFileReader {
+  static create = async (url) => {
+    const remoteSziFile = await RemoteFile.create(url);
+
+    const contents = await getContentsOfRemoteSziFile(remoteSziFile);
+
+    return new RemoteSziFileReader(remoteSziFile, contents);
+  };
+
+  constructor(remoteSziFile, contents) {
+    this.remoteSziFile = remoteSziFile;
+    this.contents = contents;
+  }
+
+  fetchFileBody = async (filename) => {
+    const location = this.contents.get(filename);
+    const arrayBuffer = await this.remoteSziFile.fetchRange(location.entryStart, location.maxEntryEnd);
+
+    const reader = new LittleEndianDataReader(arrayBuffer, 0);
+
+    // We need to make sure we read past the entire local header correctly before trying to read the body.
+    // We can't just use the central directory header data to determine the length of the extra fields
+    // because various extra fields inconsistently appear either one or the other.
+    reader.skip(localHeaderBeforeVariableFieldsSize);
+    const filenameLengthInHeader = reader.readUint16();
+    const extraFieldsLength = reader.readUint16();
+    const filenameInHeader = reader.readString(filenameLengthInHeader);
+    if (filenameInHeader !== filename) {
+      throw new Error(`Trying to read ${filename} but actually got ${filenameInHeader}`);
+    }
+    reader.skip(extraFieldsLength);
+
+    // Note we don't just read up to the end, there may be other gubbins between the end of the body
+    // and the end of the entry
+    return reader.readUint8Array(location.bodyLength);
+  };
+
+  dziFilename = () => {
+    let dziFilename = '';
+    for (const filename of this.contents.keys()) {
+      // i.e. "something/something.dzi"
+      if (filename.match(/^([^\/]*)\/\1\.dzi$/)) {
+        if (dziFilename) {
+          throw new Error('Multiple .dzi files found in .szi!');
+        } else {
+          dziFilename = filename;
         }
       }
     }
-  }
-  return dziXmlPath;
-};
 
-export const fetchFileBodyFromZipFile = async (url, start, end, length) => {
-  const arrayBuffer = await fetchRange(url, start, end);
-  const reader = new LittleEndianDataReader(arrayBuffer, 0);
-  reader.skip(localHeaderBeforeVariableFieldsSize);
-  const filenameLength = reader.readUint16();
-  const extraFieldsLength = reader.readUint16();
-  const filename = reader.readString(filenameLength);
-  reader.skip(extraFieldsLength);
-  return reader.readUint8Array(length);
-};
+    if (!dziFilename) {
+      throw new Error('No dzi file found in .szi!');
+    }
+
+    return dziFilename;
+  };
+}
 
 export const enableSziTileSource = (OpenSeadragon) => {
   class SziTileSource extends OpenSeadragon.DziTileSource {
-    constructor(contents, sziUrl, options = {}) {
-      super(options);
-      this.contents = contents;
-      this.sziUrl = sziUrl;
-    }
-
     static createSziTileSource = async (url) => {
-      const contents = await getContentsOfSziFile(url);
+      const remoteSziReader = await RemoteSziFileReader.create(url);
 
-      //Find dziXmlPath
-      const dziXmlPath = findDziXmlPathInContents(contents);
-      if (!dziXmlPath) {
-        throw new Error('No dzi file found in .szi!');
-      }
-
-      const dziRange = contents.get(dziXmlPath);
-
-      const dziUint8Buffer = await fetchFileBodyFromZipFile(url, dziRange.start, dziRange.end, dziRange.length);
+      const dziFilename = remoteSziReader.dziFilename();
+      const dziUint8Buffer = await remoteSziReader.fetchFileBody(dziFilename);
       const dziXmlText = new TextDecoder().decode(dziUint8Buffer);
       const dziXml = OpenSeadragon.parseXml(dziXmlText);
+      const options = OpenSeadragon.DziTileSource.prototype.configure(dziXml, dziFilename, '');
 
-      const options = OpenSeadragon.DziTileSource.prototype.configure(dziXml, dziXmlPath, '');
-
-      return new SziTileSource(contents, url, options);
+      return new SziTileSource(remoteSziReader, options);
     };
+
+    constructor(remoteSziReader, options = {}) {
+      super(options);
+      this.remoteSziReader = remoteSziReader;
+    }
 
     /**
      * Download tile data.
@@ -510,13 +559,7 @@ export const enableSziTileSource = (OpenSeadragon) => {
       context.userData.image = image;
       context.userData.request = null;
 
-      const dziUrl = context.src;
-      const dziRange = this.contents.get(dziUrl);
-      if (!dziRange) {
-        throw new Error('.dzi file not found in .szi file');
-      }
-
-      fetchFileBodyFromZipFile(this.sziUrl, dziRange.start, dziRange.end, dziRange.length).then(
+      this.remoteSziReader.fetchFileBody(context.src).then(
         (arrayBuffer) => {
           const imageBlob = new Blob([arrayBuffer], { type: 'image/jpeg' });
           if (imageBlob.size === 0) {
