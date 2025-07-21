@@ -140,7 +140,7 @@ const maxUint16 = 0xffff;
 const maxCommentSize = maxUint16;
 const eocdSizeWithoutComment = 22;
 const zip64EocdLocatorSize = 20;
-const fixedLocalHeaderSize = 30;
+const localHeaderBeforeVariableFieldsSize = 26;
 const zip64EocdRecordSizeBetweenSizeAndExtensibleFields = 34;
 
 const zip64ExtraFieldHeaderId = 0x0001;
@@ -252,19 +252,14 @@ function readZip64ExtraFields(reader, length, fields) {
       }
 
       if (relativeOffsetOfLocalHeader === maxUint32) {
-        sizeOfExtraFieldsNotInLocalHeader += 8;
         relativeOffsetOfLocalHeader = reader.readUint64();
       }
 
       if (diskNumberStart === maxUint16) {
-        sizeOfExtraFieldsNotInLocalHeader += 4;
         diskNumberStart = reader.readUint32();
       }
 
       // If this block is empty, it's header and size won't be included either!
-      if (sizeOfExtraFieldsNotInLocalHeader === dataBlockSize) {
-        sizeOfExtraFieldsNotInLocalHeader += 4;
-      }
     } else {
       reader.skip(dataBlockSize);
     }
@@ -275,7 +270,6 @@ function readZip64ExtraFields(reader, length, fields) {
     uncompressedSize,
     diskNumberStart,
     relativeOffsetOfLocalHeader,
-    sizeOfExtraFieldsNotInLocalHeader,
   };
 }
 
@@ -328,27 +322,18 @@ function readCentralDirectory(cdArrayBuffer, totalEntries) {
       uncompressedSize: extraFields.uncompressedSize,
       relativeOffsetOfLocalHeader: extraFields.relativeOffsetOfLocalHeader,
       filename,
-      filenameLength,
-      extraFieldLength,
-      sizeOfExtraFieldsNotInLocalHeader: extraFields.sizeOfExtraFieldsNotInLocalHeader,
     });
   }
   return centralDirectory;
 }
 
-function generateMapOfFileBodyLocations(centralDirectory) {
+function generateMapOfFileBodyLocations(centralDirectory, startOffsetToMaxEndOffset) {
   return centralDirectory.reduce((filenameToLocation, entry) => {
-    // Assume that the extra fields on the local header are the same length of those
-    // on the central directory entry. This feels a bit ehhhhh....
-    const start =
-      entry.relativeOffsetOfLocalHeader +
-      fixedLocalHeaderSize +
-      entry.filenameLength +
-      entry.extraFieldLength -
-      entry.sizeOfExtraFieldsNotInLocalHeader;
-    const end = start + entry.uncompressedSize;
+    const start = entry.relativeOffsetOfLocalHeader;
+    const end = startOffsetToMaxEndOffset.get(start);
+    const length = entry.uncompressedSize;
 
-    filenameToLocation.set(entry.filename, { start, end });
+    filenameToLocation.set(entry.filename, { start, end, length });
     return filenameToLocation;
   }, new Map());
 }
@@ -380,6 +365,7 @@ export async function getContentsOfSziFile(url) {
   const eocdArrayBuffer = await fetchCheckedRange(url, Math.max(0, minEocdsOffset), fileSize);
 
   const startOfEocdInBuffer = findStartOfEocd(eocdArrayBuffer);
+  let eocdLikeThingsStartOffset = minEocdsOffset + startOfEocdInBuffer;
 
   let { totalEntries, centralDirectoryOffset, centralDirectorySize } = readEocd(eocdArrayBuffer, startOfEocdInBuffer);
   const zip64 =
@@ -388,6 +374,8 @@ export async function getContentsOfSziFile(url) {
   if (zip64) {
     const startOfZip64EocdLocatorInBuffer = startOfEocdInBuffer - zip64EocdLocatorSize;
     const zip64EocdLocator = readZip64EocdLocator(eocdArrayBuffer, startOfZip64EocdLocatorInBuffer);
+
+    eocdLikeThingsStartOffset = zip64EocdLocator.zip64EocdOffset;
 
     const zip64EocdBuffer = await fetchCheckedRange(
       url,
@@ -403,8 +391,21 @@ export async function getContentsOfSziFile(url) {
     centralDirectoryOffset,
     centralDirectoryOffset + centralDirectorySize,
   );
+
   const centralDirectory = readCentralDirectory(cdArrayBuffer, totalEntries);
-  return generateMapOfFileBodyLocations(centralDirectory);
+
+  const startOffsetToMaxEndOffset = new Map();
+  const entryOffsets = centralDirectory.map((entry) => entry.relativeOffsetOfLocalHeader);
+  entryOffsets.sort((a, b) => a - b);
+  for (let i = 0; i < entryOffsets.length - 1; i++) {
+    startOffsetToMaxEndOffset.set(entryOffsets[i], entryOffsets[i + 1]);
+  }
+
+  if (entryOffsets.length > 0) {
+    startOffsetToMaxEndOffset.set(entryOffsets.at(-1), eocdLikeThingsStartOffset);
+  }
+
+  return generateMapOfFileBodyLocations(centralDirectory, startOffsetToMaxEndOffset);
 }
 
 const findDziXmlPathInContents = (contents) => {
@@ -426,7 +427,18 @@ const findDziXmlPathInContents = (contents) => {
     }
   }
   return dziXmlPath;
-}
+};
+
+export const fetchFileBodyFromZipFile = async (url, start, end, length) => {
+  const arrayBuffer = await fetchRange(url, start, end);
+  const reader = new LittleEndianDataReader(arrayBuffer, 0);
+  reader.skip(localHeaderBeforeVariableFieldsSize);
+  const filenameLength = reader.readUint16();
+  const extraFieldsLength = reader.readUint16();
+  const filename = reader.readString(filenameLength);
+  reader.skip(extraFieldsLength);
+  return reader.readUint8Array(length);
+};
 
 export const enableSziTileSource = (OpenSeadragon) => {
   class SziTileSource extends OpenSeadragon.DziTileSource {
@@ -447,8 +459,8 @@ export const enableSziTileSource = (OpenSeadragon) => {
 
       const dziRange = contents.get(dziXmlPath);
 
-      const dziArrayBuffer = await fetchRange(url, dziRange.start, dziRange.end);
-      const dziXmlText = new TextDecoder().decode(new Uint8Array(dziArrayBuffer));
+      const dziUint8Buffer = await fetchFileBodyFromZipFile(url, dziRange.start, dziRange.end, dziRange.length);
+      const dziXmlText = new TextDecoder().decode(dziUint8Buffer);
       const dziXml = OpenSeadragon.parseXml(dziXmlText);
 
       const options = OpenSeadragon.DziTileSource.prototype.configure(dziXml, dziXmlPath, '');
@@ -504,7 +516,7 @@ export const enableSziTileSource = (OpenSeadragon) => {
         throw new Error('.dzi file not found in .szi file');
       }
 
-      fetchRange(this.sziUrl, dziRange.start, dziRange.end).then(
+      fetchFileBodyFromZipFile(this.sziUrl, dziRange.start, dziRange.end, dziRange.length).then(
         (arrayBuffer) => {
           const imageBlob = new Blob([arrayBuffer], { type: 'image/jpeg' });
           if (imageBlob.size === 0) {
