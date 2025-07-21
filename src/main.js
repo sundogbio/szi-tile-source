@@ -408,8 +408,8 @@ export async function getContentsOfSziFile(url) {
 }
 
 export class UrlMapper {
-  constructor(sziUrl) {
-    this.sziParsedUrl = URL.parse(sziUrl);
+  constructor(sziUrl, baseUrl) {
+    this.sziParsedUrl = URL.parse(sziUrl, baseUrl);
     if (!this.sziParsedUrl) {
       throw new Error('Invalid Szi Tile Source URL!');
     }
@@ -455,7 +455,11 @@ export const enableSziTileSource = (OpenSeadragon) => {
 
     static createSziTileSource = async (url) => {
       const contents = await getContentsOfSziFile(url);
-      const urlMapper = new UrlMapper(url);
+
+      // Allow relative URLs if we are in a window. I don't particularly like doing it like this
+      // so it might move outwards if/when I refactor the szi reading code into its own object
+      const baseUrl = window?.location?.href;
+      const urlMapper = new UrlMapper(url, baseUrl);
 
       const dziXmlUrl = urlMapper.dziXmlUrl();
 
