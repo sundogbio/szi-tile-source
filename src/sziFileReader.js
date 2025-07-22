@@ -190,6 +190,29 @@ function readCentralDirectory(arrayBuffer, totalEntries) {
   return centralDirectory;
 }
 
+async function findCentralDirectoryProperties(remoteFile) {
+  const minEocdsOffset = remoteFile.size - (zip64EocdLocatorSize + eocdSizeWithoutComment + maxCommentSize);
+  const eocdArrayBuffer = await remoteFile.fetchRange(Math.max(0, minEocdsOffset), remoteFile.size);
+  const startOfEocdInBuffer = findStartOfEocd(eocdArrayBuffer);
+  const { totalEntries, centralDirectoryOffset, centralDirectorySize } = readEocd(eocdArrayBuffer, startOfEocdInBuffer);
+
+  const zip64 =
+    totalEntries === maxUint16 || centralDirectoryOffset === maxUint32 || centralDirectorySize === maxUint32;
+  if (zip64) {
+    const startOfZip64EocdLocatorInBuffer = startOfEocdInBuffer - zip64EocdLocatorSize;
+    const zip64EocdLocator = readZip64EocdLocator(eocdArrayBuffer, startOfZip64EocdLocatorInBuffer);
+
+    const zip64EocdBuffer = await remoteFile.fetchRange(
+      zip64EocdLocator.zip64EocdOffset,
+      minEocdsOffset + startOfZip64EocdLocatorInBuffer,
+    );
+
+    return readZip64EocdRecord(zip64EocdBuffer, 0);
+  } else {
+    return { totalEntries, centralDirectoryOffset, centralDirectorySize };
+  }
+}
+
 /**
  * Generate a map from the start of a file's entry in the .szi to an upper bound on its end, the latter being
  * either the start of the next file in the .szi, or the beginning of the central directory structures.
@@ -246,23 +269,8 @@ function createTableOfContents(centralDirectory, centralDirectoryOffset) {
 }
 
 export async function getContentsOfRemoteSziFile(remoteFile) {
-  const minEocdsOffset = remoteFile.size - (zip64EocdLocatorSize + eocdSizeWithoutComment + maxCommentSize);
-  const eocdArrayBuffer = await remoteFile.fetchRange(Math.max(0, minEocdsOffset), remoteFile.size);
-  const startOfEocdInBuffer = findStartOfEocd(eocdArrayBuffer);
-  let { totalEntries, centralDirectoryOffset, centralDirectorySize } = readEocd(eocdArrayBuffer, startOfEocdInBuffer);
-
-  const zip64 =
-    totalEntries === maxUint16 || centralDirectoryOffset === maxUint32 || centralDirectorySize === maxUint32;
-  if (zip64) {
-    const startOfZip64EocdLocatorInBuffer = startOfEocdInBuffer - zip64EocdLocatorSize;
-    const zip64EocdLocator = readZip64EocdLocator(eocdArrayBuffer, startOfZip64EocdLocatorInBuffer);
-
-    const zip64EocdBuffer = await remoteFile.fetchRange(
-      zip64EocdLocator.zip64EocdOffset,
-      minEocdsOffset + startOfZip64EocdLocatorInBuffer,
-    );
-    ({ totalEntries, centralDirectoryOffset, centralDirectorySize } = readZip64EocdRecord(zip64EocdBuffer, 0));
-  }
+  const { totalEntries, centralDirectoryOffset, centralDirectorySize } =
+    await findCentralDirectoryProperties(remoteFile);
 
   const cdArrayBuffer = await remoteFile.fetchRange(
     centralDirectoryOffset,
