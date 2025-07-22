@@ -1,5 +1,5 @@
 import { RemoteFile } from './remoteFile.js';
-import { RemoteSziFileReader } from './sziFileReader.js';
+import { SziFileReader } from './sziFileReader.js';
 
 export const enableSziTileSource = (OpenSeadragon) => {
   class SziTileSource extends OpenSeadragon.DziTileSource {
@@ -21,7 +21,7 @@ export const enableSziTileSource = (OpenSeadragon) => {
       }
 
       const remoteSziFile = await RemoteFile.create(url, fetchOptions);
-      const remoteSziReader = await RemoteSziFileReader.create(remoteSziFile);
+      const remoteSziReader = await SziFileReader.create(remoteSziFile);
 
       const options = await this.readOptionsFromDziXml(remoteSziReader);
 

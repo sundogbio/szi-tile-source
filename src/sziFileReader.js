@@ -190,9 +190,9 @@ function readCentralDirectory(arrayBuffer, totalEntries) {
   return centralDirectory;
 }
 
-async function findCentralDirectoryProperties(remoteFile) {
-  const minEocdsOffset = remoteFile.size - (zip64EocdLocatorSize + eocdSizeWithoutComment + maxCommentSize);
-  const eocdArrayBuffer = await remoteFile.fetchRange(Math.max(0, minEocdsOffset), remoteFile.size);
+async function findCentralDirectoryProperties(sziFile) {
+  const minEocdsOffset = sziFile.size - (zip64EocdLocatorSize + eocdSizeWithoutComment + maxCommentSize);
+  const eocdArrayBuffer = await sziFile.fetchRange(Math.max(0, minEocdsOffset), sziFile.size);
   const startOfEocdInBuffer = findStartOfEocd(eocdArrayBuffer);
   const { totalEntries, centralDirectoryOffset, centralDirectorySize } = readEocd(eocdArrayBuffer, startOfEocdInBuffer);
 
@@ -202,7 +202,7 @@ async function findCentralDirectoryProperties(remoteFile) {
     const startOfZip64EocdLocatorInBuffer = startOfEocdInBuffer - zip64EocdLocatorSize;
     const zip64EocdLocator = readZip64EocdLocator(eocdArrayBuffer, startOfZip64EocdLocatorInBuffer);
 
-    const zip64EocdBuffer = await remoteFile.fetchRange(
+    const zip64EocdBuffer = await sziFile.fetchRange(
       zip64EocdLocator.zip64EocdOffset,
       minEocdsOffset + startOfZip64EocdLocatorInBuffer,
     );
@@ -268,33 +268,29 @@ function createTableOfContents(centralDirectory, centralDirectoryOffset) {
   }, new Map());
 }
 
-export async function getContentsOfRemoteSziFile(remoteFile) {
-  const { totalEntries, centralDirectoryOffset, centralDirectorySize } =
-    await findCentralDirectoryProperties(remoteFile);
+export async function getContentsOfSziFile(sziFile) {
+  const { totalEntries, centralDirectoryOffset, centralDirectorySize } = await findCentralDirectoryProperties(sziFile);
 
-  const cdArrayBuffer = await remoteFile.fetchRange(
-    centralDirectoryOffset,
-    centralDirectoryOffset + centralDirectorySize,
-  );
+  const cdArrayBuffer = await sziFile.fetchRange(centralDirectoryOffset, centralDirectoryOffset + centralDirectorySize);
   const centralDirectory = readCentralDirectory(cdArrayBuffer, totalEntries);
 
   return createTableOfContents(centralDirectory, centralDirectoryOffset);
 }
 
-export class RemoteSziFileReader {
-  static create = async (remoteSziFile) => {
-    const contents = await getContentsOfRemoteSziFile(remoteSziFile);
-    return new RemoteSziFileReader(remoteSziFile, contents);
+export class SziFileReader {
+  static create = async (sziFile) => {
+    const contents = await getContentsOfSziFile(sziFile);
+    return new SziFileReader(sziFile, contents);
   };
 
-  constructor(remoteSziFile, contents) {
-    this.remoteSziFile = remoteSziFile;
+  constructor(sziFile, contents) {
+    this.sziFile = sziFile;
     this.contents = contents;
   }
 
   fetchFileBody = async (filename, abortSignal) => {
     const location = this.contents.get(filename);
-    const arrayBuffer = await this.remoteSziFile.fetchRange(location.entryStart, location.maxEntryEnd, abortSignal);
+    const arrayBuffer = await this.sziFile.fetchRange(location.entryStart, location.maxEntryEnd, abortSignal);
 
     const reader = new LittleEndianDataReader(arrayBuffer, 0);
 
