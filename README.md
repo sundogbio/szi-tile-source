@@ -20,3 +20,16 @@ contents from an *szi* tiled image of Mix. Either run
 
 or by using your IDE. It's not much of test - it's mostly there so I can hand debug my code as I go. I will build out
 something better once I've got a pinch more abstraction and a more tractable test data file.
+
+
+## Building for distribution ##
+
+To make both ES and UMD files for distribution, just run
+
+`vite build`
+
+or
+
+`npm run build`
+
+and vite will create them in the dist folder.

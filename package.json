@@ -1,8 +1,17 @@
 {
   "name": "szi-tile-source",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "description": "",
   "type": "module",
+  "files": ["dist"],
+  "main" : "./dist/szi-tile-source.umd.cjs",
+  "module" : "./dist/szi-tile-source.js",
+  "exports": {
+    ".": {
+      "import": "./dist/szi-tile-source.js",
+      "require": "./dist/szi-tile-source.umd.cjs"
+    }
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",
