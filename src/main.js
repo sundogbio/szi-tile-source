@@ -1,53 +1,4 @@
 /**
- * Fetch the range of bytes specified. Note that end is *exclusive*, though the header
- * expects *inclusive* values. This removes the need to continually subtract 1 from
- * the more usual end-exclusive values used elsewhere.
- *
- * @param url
- * @param start
- * @param end
- * @returns {Promise<ArrayBuffer>}
- */
-export async function fetchRange(url, start, end) {
-  try {
-    const response = await fetch(url, {
-      headers: {
-        Range: `bytes=${start}-${end - 1}`,
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! Status: ${response.status}`);
-    }
-
-    return await response.arrayBuffer();
-  } catch (error) {
-    console.error(`Error fetching range ${start}-${end - 1}:`, error);
-    throw error;
-  }
-}
-
-export async function fetchContentLength(url) {
-  try {
-    const response = await fetch(url, { method: 'HEAD' });
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! Status: ${response.status}`);
-    }
-
-    const contentLength = response.headers.get('content-length');
-    if (!contentLength) {
-      throw new Error("Couldn't get content length from headers");
-    }
-
-    return parseInt(contentLength, 10);
-  } catch (error) {
-    console.error('Error getting file size:', error);
-    throw error;
-  }
-}
-
-/**
  * Represents a remote file that we are going to try and read from
  */
 class RemoteFile {
@@ -55,19 +6,62 @@ class RemoteFile {
    * Create the remote file by fetching its size using a head request
    *
    * @param url url of the file that we eventually want to read
+   * @param fetchOptions options to apply to all fetches,
+   * @param fetchOptions.mode cors mode to use
+   * @param fetchOptions.credentials whether to send credentials
+   * @param fetchOptions.headers additional headers to add to all requests
    * @returns {Promise<RemoteFile>}
    */
-  static create = async (url) => {
-    const size = await fetchContentLength(url);
-    return new RemoteFile(url, size);
+  static create = async (url, fetchOptions) => {
+    const size = await this.fetchContentLength(url, fetchOptions);
+    return new RemoteFile(url, size, fetchOptions);
   };
 
-  constructor(url, size) {
+  static fetchContentLength = async (url, fetchOptions) => {
+    try {
+      const response = await fetch(url, {
+        method: 'HEAD',
+        headers: fetchOptions.headers,
+        mode: fetchOptions.mode,
+        credentials: fetchOptions.credentials,
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! Status: ${response.status}`);
+      }
+
+      const contentLength = response.headers.get('content-length');
+      if (!contentLength) {
+        throw new Error("Couldn't get content length from headers");
+      }
+
+      return parseInt(contentLength, 10);
+    } catch (error) {
+      console.error('Error getting file size:', error);
+      throw error;
+    }
+  };
+
+  constructor(url, size, fetchOptions) {
     this.url = url;
     this.size = size;
+    this.fetchOptions = fetchOptions;
   }
 
-  fetchRange = async (start, end) => {
+  /**
+   * Fetch the range of bytes specified. Note that end is *exclusive*, though the header
+   * expects *inclusive* values. This removes the need to continually subtract 1 from
+   * the more usual end-exclusive values used elsewhere.
+   *
+   * @param start inclusive start of range to fetch
+   * @param end exclusive start of range to fetch
+   * @param abortSignal AbortController signal, optionally specify this if you might want to
+   *        abort the request
+   * @throws Error if the start or end lie outside the file, or if start > end. Also throws
+   *         an error if the request fails with anything other than a status between 200 and
+   *         299.
+   */
+  fetchRange = async (start, end, abortSignal) => {
     if (start < 0 || start > this.size) {
       throw new Error(`Start of fetch range (${start}) out of bounds (0 - ${this.size})!`);
     }
@@ -80,7 +74,23 @@ class RemoteFile {
       throw new Error(`Start of fetch range (${start}) greater than end (${end})!`);
     }
 
-    return await fetchRange(this.url, start, end);
+    const rangeHeaderValue = `bytes=${start}-${end - 1}`;
+    const headers = this.fetchOptions.headers
+      ? { ...this.fetchOptions.headers, Range: rangeHeaderValue }
+      : { Range: rangeHeaderValue };
+
+    const response = await fetch(this.url, {
+      headers,
+      signal: abortSignal,
+      mode: this.fetchOptions.mode,
+      credentials: this.fetchOptions.credentials,
+    });
+
+    if (!response.ok) {
+      throw new Error(`Couldn't fetch range ${start}:${end} of ${url} of ${response.status}`);
+    }
+
+    return await response.arrayBuffer();
   };
 }
 
@@ -441,11 +451,8 @@ export async function getContentsOfRemoteSziFile(remoteFile) {
 }
 
 class RemoteSziFileReader {
-  static create = async (url) => {
-    const remoteSziFile = await RemoteFile.create(url);
-
+  static create = async (remoteSziFile) => {
     const contents = await getContentsOfRemoteSziFile(remoteSziFile);
-
     return new RemoteSziFileReader(remoteSziFile, contents);
   };
 
@@ -454,9 +461,9 @@ class RemoteSziFileReader {
     this.contents = contents;
   }
 
-  fetchFileBody = async (filename) => {
+  fetchFileBody = async (filename, abortSignal) => {
     const location = this.contents.get(filename);
-    const arrayBuffer = await this.remoteSziFile.fetchRange(location.entryStart, location.maxEntryEnd);
+    const arrayBuffer = await this.remoteSziFile.fetchRange(location.entryStart, location.maxEntryEnd, abortSignal);
 
     const reader = new LittleEndianDataReader(arrayBuffer, 0);
 
@@ -500,46 +507,55 @@ class RemoteSziFileReader {
 
 export const enableSziTileSource = (OpenSeadragon) => {
   class SziTileSource extends OpenSeadragon.DziTileSource {
-    static createSziTileSource = async (url) => {
-      const remoteSziReader = await RemoteSziFileReader.create(url);
+    /**
+     * Create an SZI tile source for use with OpenSeadragon.
+     *
+     * @param url location of the SZI file we want to read
+     * @param fetchOptions options to use when making HTTP requests to fetch parts of the file
+     * @param fetchOptions.mode cors mode to use. Note that "no-cors" is not accepted, as it breaks Range requests.
+     *        (See: https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API/Using_Fetch#making_cross-origin_requests)
+     * @param fetchOptions.credentials when and how to pass credentials
+     *        (see:https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API/Using_Fetch#including_credentials)
+     * @param fetchOptions.headers additional HTTP headers to send with each request
+     * @returns {Promise<SziTileSource>}
+     */
+    static createSziTileSource = async (url, fetchOptions = {}) => {
+      if (fetchOptions && fetchOptions.mode === 'no-cors') {
+        throw new Error("'no-cors' mode is not supported, as Range headers don't work with it");
+      }
 
-      const dziFilename = remoteSziReader.dziFilename();
-      const dziUint8Buffer = await remoteSziReader.fetchFileBody(dziFilename);
-      const dziXmlText = new TextDecoder().decode(dziUint8Buffer);
-      const dziXml = OpenSeadragon.parseXml(dziXmlText);
-      const options = OpenSeadragon.DziTileSource.prototype.configure(dziXml, dziFilename, '');
+      const remoteSziFile = await RemoteFile.create(url, fetchOptions);
+      const remoteSziReader = await RemoteSziFileReader.create(remoteSziFile);
+
+      const options = await this.readOptionsFromDziXml(remoteSziReader);
 
       return new SziTileSource(remoteSziReader, options);
     };
 
-    constructor(remoteSziReader, options = {}) {
+    static async readOptionsFromDziXml(remoteSziReader) {
+      const dziFilename = remoteSziReader.dziFilename();
+      const dziUint8Buffer = await remoteSziReader.fetchFileBody(dziFilename);
+      const dziXmlText = new TextDecoder().decode(dziUint8Buffer);
+      const dziXml = OpenSeadragon.parseXml(dziXmlText);
+      return OpenSeadragon.DziTileSource.prototype.configure(dziXml, dziFilename, '');
+    }
+
+    constructor(remoteSziReader, options) {
       super(options);
       this.remoteSziReader = remoteSziReader;
     }
 
     /**
-     * Download tile data.
-     * Note that if you override this function, you should override also downloadTileAbort().
+     * Download tile data. This is a cut down implementation of the XML-specific path of TileSource.Download
+     * that instead of calling makeAjaxRequest, uses the remoteSziFileReader instead.
+     *
+     * Note that this ignores all the Ajax options as the remoteSziReader uses the fetchOptions supplied in
+     * the createSziTileSourceInstead. Also note that only the documented parts of context are used below.
+     *
      * @param {ImageJob} context job context that you have to call finish(...) on.
      * @param {String} [context.src] - URL of image to download.
-     * @param {String} [context.loadWithAjax] - Whether to load this image with AJAX.
-     * @param {String} [context.ajaxHeaders] - Headers to add to the image request if using AJAX.
-     * @param {Boolean} [context.ajaxWithCredentials] - Whether to set withCredentials on AJAX requests.
-     * @param {String} [context.crossOriginPolicy] - CORS policy to use for downloads
-     * @param {String} [context.postData] - HTTP POST data (usually but not necessarily in k=v&k2=v2... form,
-     *   see TileSource::getPostData) or null
      * @param {*} [context.userData] - Empty object to attach your own data and helper variables to.
      * @param {Function} [context.finish] - Should be called unless abort() was executed, e.g. on all occasions,
-     *   be it successful or unsuccessful request.
-     *   Usage: context.finish(data, request, errMessage). Pass the downloaded data object or null upon failure.
-     *   Add also reference to an ajax request if used. Provide error message in case of failure.
-     * @param {Function} [context.abort] - Called automatically when the job times out.
-     *   Usage: context.abort().
-     * @param {Function} [context.callback] @private - Called automatically once image has been downloaded
-     *   (triggered by finish).
-     * @param {Number} [context.timeout] @private - The max number of milliseconds that
-     *   this image job may take to complete.
-     * @param {string} [context.errorMsg] @private - The final error message, default null (set by finish).
      */
     downloadTileStart = (context) => {
       const image = new Image();
@@ -557,14 +573,14 @@ export const enableSziTileSource = (OpenSeadragon) => {
       };
 
       context.userData.image = image;
-      context.userData.request = null;
+      context.userData.abortController = new AbortController();
 
-      this.remoteSziReader.fetchFileBody(context.src).then(
+      this.remoteSziReader.fetchFileBody(context.src, context.userData.abortController.signal).then(
         (arrayBuffer) => {
           const imageBlob = new Blob([arrayBuffer], { type: 'image/jpeg' });
           if (imageBlob.size === 0) {
             resetImageHandlers();
-            context.finish(null, context.userData.request, 'Empty image!');
+            context.finish(null, null, 'Empty image!');
           } else {
             // Turn the blob into an image,
             // When this completes it will trigger finish via the onLoad method of the image
@@ -573,7 +589,7 @@ export const enableSziTileSource = (OpenSeadragon) => {
         },
         (error) => {
           resetImageHandlers();
-          context.finish(null, context.userData.request, 'Download failed: ' + error.message);
+          context.finish(null, null, 'Download failed: ' + error.message);
         },
       );
     };
@@ -585,10 +601,12 @@ export const enableSziTileSource = (OpenSeadragon) => {
      * @param {*} [context.userData] - Empty object to attach (and mainly read) your own data.
      */
     downloadTileAbort = (context) => {
-      // Note this doesn't actually abort the network request as it's a bit
-      // faffy to do, and I'm not sure that it's really necessary!
-      var image = context.userData.image;
-      if (context.userData.image) {
+      const abortController = context.userData.abortController;
+      if (abortController) {
+        abortController.abort();
+      }
+      const image = context.userData.image;
+      if (image) {
         image.onload = image.onerror = image.onabort = null;
       }
     };

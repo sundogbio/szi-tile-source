@@ -36,20 +36,25 @@
             <script type="module">
                 import {enableSziTileSource} from "./src/main.js";
 
-                window.onload = function () {
+                enableSziTileSource(OpenSeadragon);
 
-                    enableSziTileSource(OpenSeadragon);
+                const sziUrl = 'examples/zipped/mixmas.szi';
+                OpenSeadragon.SziTileSource.createSziTileSource(
+                    sziUrl,
+                    {
+                        headers:{
+                            "X-bobbins": "what a load of bobbins"
+                        },
+                        mode:"cors",
+                        credentials:"omit"
+                    }).then(async tileSource => {
+                    const viewer = new OpenSeadragon.Viewer({
+                        id: "openseadragon2",
+                        prefixUrl: "https://cdnjs.cloudflare.com/ajax/libs/openseadragon/5.0.1/images/",
+                        tileSources: [tileSource],
+                    });
 
-                    const sziUrl = 'examples/zipped/mixmas.szi';
-                    OpenSeadragon.SziTileSource.createSziTileSource(sziUrl).then(async tileSource => {
-                        const viewer = new OpenSeadragon.Viewer({
-                            id: "openseadragon2",
-                            prefixUrl: "https://cdnjs.cloudflare.com/ajax/libs/openseadragon/5.0.1/images/",
-                            tileSources: [tileSource],
-                        });
-
-                    })
-                }
+                })
             </script>
         </div>
     </div>
