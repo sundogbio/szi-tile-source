@@ -1,0 +1,15 @@
+.layout {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+
+.osd-and-title {
+  max-width: 400px;
+  margin: 16px;
+}
+
+.osd {
+  width: 400px;
+  height: 400px;
+}

@@ -577,7 +577,7 @@ export const enableSziTileSource = (OpenSeadragon) => {
 
       this.remoteSziReader.fetchFileBody(context.src, context.userData.abortController.signal).then(
         (arrayBuffer) => {
-          const imageBlob = new Blob([arrayBuffer], { type: 'image/jpeg' });
+          const imageBlob = new Blob([arrayBuffer]);
           if (imageBlob.size === 0) {
             resetImageHandlers();
             context.finish(null, null, 'Empty image!');
