@@ -1,7 +1,8 @@
 /**
  * @vitest-environment jsdom
  */
-import { enableSziTileSource, extractDziPathAndUrl, UrlMapper } from './main.js';
+import { enableSziTileSource } from './main.js';
+import {RemoteFile} from "./remoteFile.js";
 import { expect, test } from 'vitest';
 import OpenSeadragon from 'openseadragon';
 import { getContentsOfSziFile } from './sziFileReader.js';
@@ -10,7 +11,7 @@ import { getContentsOfSziFile } from './sziFileReader.js';
 // that you have done 'npx vite' to serve up the examples on a local server to
 // to start with
 test('Test contents', { timeout: 300_000 }, async () => {
-  const contents = await getContentsOfSziFile('http://localhost:5173/examples/zipped/mixmas.szi');
+  const contents = await getContentsOfSziFile(await RemoteFile.create('http://localhost:5173/examples/zipped/mixmas-jpeg.szi', {}));
   expect(contents.size).toBe(150);
 });
 
@@ -19,13 +20,13 @@ test('Test construction', { timeout: 300_000 }, async () => {
   enableSziTileSource(OpenSeadragon);
 
   const sziTileSource = await OpenSeadragon.SziTileSource.createSziTileSource(
-    'http://localhost:5173/examples/zipped/mixmas.szi',
+    'http://localhost:5173/examples/zipped/mixmas-jpeg.szi',
   );
 
   expect(sziTileSource.getTileUrl(0, 0, 0)).toEqual(
-    'http://localhost:5173/examples/zipped/mixmas/mixmas_files/0/0_0.jpeg',
+    'mixmas/mixmas_files/0/0_0.jpeg',
   );
   expect(sziTileSource.getTileUrl(10, 55, 33)).toEqual(
-    'http://localhost:5173/examples/zipped/mixmas/mixmas_files/10/55_33.jpeg',
+    'mixmas/mixmas_files/10/55_33.jpeg',
   );
 });
