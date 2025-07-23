@@ -19,16 +19,17 @@ operations aren't available.
 To counter this problem [Smart In Media](https://www.smartinmedia.com/) came up with the
 [SZI](https://github.com/smartinmedia/SZI-Format) format, which wraps the DZI file structure up in a
 single, uncompressed ZIP file. This choice of format obviously makes moving the tile images around a
-lot easier, but it also allows users access to each individual tile image by looking up its location
+lot easier, but it also allows users to access each individual tile image by looking up its location
 in the ZIP file's Central Directory, and then reading the appropriate range of bytes directly out of
 the file.
 
-Unfortunately, reading the Central Directory from the file is a slightly involved process (see
-below), and is impractical to do on every tile request. The intent of the authors of the SZI spec was
-that any system serving up images from remotely stored SZIs would first generate a cacheable map file
-of the SZI file before serving files, to enable rapid look up of the image tile locations. However,
-this precludes the efficient use of simple static storage systems to serve up SZI files unless you
-pre-process all the files to generate these maps and store them alongside the files themselves.
+Unfortunately, reading the Central Directory from the file is a slightly involved process ([see
+below](#fetching-the-central-directory)), and is impractical to do on every tile request.
+The intent of the authors of the SZI spec was that any system serving up images from remotely stored
+SZIs would first generate a cacheable map file of the SZI file before serving files, to enable rapid
+look up of the image tile locations. However, this precludes the use of simple static storage
+systems to serve up SZI files unless you pre-process all the files to generate these maps and store
+them alongside the files themselves.
 
 The aim of this project is to enable OpenSeadragon to read unprocessed SZI files from static storage
 systems by transparently caching the Central Directory on the client side instead.
@@ -197,10 +198,10 @@ So for normal zip files we follow this process to find the location of the Centr
 4. Read that EOCD in to discover the location of the Central Directory, its length in bytes, and the
    number of entries it contains.
 
-For ZIP files bigger than 4GB it's even more complicated. These use an extended format know as
+For ZIP files bigger than 4GB it's even more complicated. These use an extended format known as
 Zip64, and in this case there are two additional structures that need to be read: the Zip64 EOCD
 Locator and the Zip64 EOCD. The standard EOCD still comes at the end of the file, but it's preceded
-by the Zip64 EOCD Locator, and then that's preceded by the Zip64 EOCD, like so:
+by the Zip64 EOCD Locator, and that's preceded in turn by the Zip64 EOCD, like so:
 
 ```
      <start of file>
@@ -228,7 +229,8 @@ by the Zip64 EOCD Locator, and then that's preceded by the Zip64 EOCD, like so:
 The Zip64 structures will only be present if one of the fields that point to the location or size of
 the Central Directory are set to their maximum values in the EOCD. 
 
-All this means that the process of locating the Central Directory in a Zip64 file goes like this:
+These additional structures mean that the process of locating the Central Directory in a Zip64 file
+goes like this:
 
 1. Find the length of the entire file by making a HEAD request to the server, and grabbing the
    content-length from the response headers
@@ -253,14 +255,14 @@ load it is impractical!
 
 ### Fetching the .dzi file and the images
 
-Once we've read the Central Directory we have know roughly where the individual file bodies live,
+Once we've read the Central Directory we know roughly where the individual file bodies live,
 but not precisely: each chunk of file data starts with a Local Header containing various bits of
 metadata, and it's the start location of this header that the Central Directory headers contain.
 Unfortunately this is not necessarily the same data as that Central Directory Header: the values can
 be different, and more importantly the *length* of the header can vary from that in the Central
 Directory. So to reliably read in the body of the file, we need to perform the following steps:
 
-1. Do a GET request with a Range from the start of the files header, to the start of the *next*
+1. Do a GET request with a Range from the start of the file's header, to the start of the *next*
    file's header.
 2. Read the header, and discard it
 3. Read the body of the file
