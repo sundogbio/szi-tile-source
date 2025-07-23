@@ -280,16 +280,16 @@ format.
 ### Getting started
 
 To begin with, make sure you have 
-[npm](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm) and 
+[pnpm](https://pnpm.io/installation) and
 [vite](https://vite.dev/guide/) installed.
 
 Then, cd into this directory, and install the dependencies:
 
-`npm install`
+`pnpm install`
 
-Once you've done this, you can just run vite:
+Once you've done this, you can just run the dev server:
 
-`vite`
+`pnpm dev`
 
 And you should then be able to see a lovely set of DZI and SZI zoomable images of Mix, my cat, if
 you go to [http://localhost:5173](http://localhost:5173).
@@ -297,7 +297,7 @@ you go to [http://localhost:5173](http://localhost:5173).
 You can also run the test in `src/main.test.js` that tests the basic business of extracting the file
 table of contents from an SZI tiled image of Mix. Either run
 
-`npx vitest`
+`pnpm test`
 
 or by using your IDE. It's not much of test - it's mostly there so I can hand debug my code as I go. 
 I will build out something better once I've got a pinch more abstraction and a more tractable test
@@ -307,11 +307,7 @@ data file.
 
 To make both ES and UMD files for distribution, just run
 
-`vite build`
-
-or
-
-`npm run build`
+`pnpm build`
 
 and vite will create them in the `dist` folder.
 
