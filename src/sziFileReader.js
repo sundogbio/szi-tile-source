@@ -1,14 +1,19 @@
-// Some standard zip sizes in bytes
 import { LittleEndianDataReader } from './littleEndianDataReader.js';
 
 const maxUint32 = 0xffffffff;
 const maxUint16 = 0xffff;
+
 const maxCommentSize = maxUint16;
 const eocdSizeWithoutComment = 22;
 const zip64EocdLocatorSize = 20;
-const localHeaderBeforeVariableFieldsSize = 26;
-const zip64EocdRecordSizeBetweenSizeAndExtensibleFields = 34;
+
 const zip64ExtraFieldHeaderId = 0x0001;
+
+const eocdMagicNumber = 0x06054b50;
+const zip64EocdLocatorMagicNumber = 0x07064b50;
+const zip64EocdRecordMagicNumber = 0x06064b50;
+const centralDirectoryHeaderMagicNumber = 0x02014b50;
+const localFileHeaderMagicNumber = 0x04034b50;
 
 /**
  * Searches backwards in the supplied bytesToSearchIn for the bytesToFind
@@ -39,7 +44,10 @@ function findBackwards(bytesToSearchIn, bytesToFind) {
 }
 
 function findStartOfEocd(arrayBuffer) {
-  const startOfEocdsInBytes = findBackwards(new Uint8Array(arrayBuffer), new Uint8Array([0x50, 0x4b, 0x05, 0x06]));
+  const magicNumberAsUint8Array = new Uint8Array(4);
+  new DataView(magicNumberAsUint8Array.buffer).setUint32(0, eocdMagicNumber, true);
+
+  const startOfEocdsInBytes = findBackwards(new Uint8Array(arrayBuffer), magicNumberAsUint8Array);
   if (startOfEocdsInBytes === -1) {
     throw new Error('Invalid SZI file, no End Of Central Directory Record found');
   }
@@ -51,6 +59,10 @@ function readEocd(arrayBuffer, startPositionInBuffer) {
   reader.skip(startPositionInBuffer);
 
   const magicNumber = reader.readUint32();
+  if (magicNumber !== eocdMagicNumber) {
+    throw new Error(`Invalid SZI file: End Of Central Directory Record has unexpected magic number`);
+  }
+
   const diskNumber = reader.readUint16();
   const startOfCdDiskNumber = reader.readUint16();
   const entriesOnDisk = reader.readUint16();
@@ -68,6 +80,9 @@ function readZip64EocdLocator(arrayBuffer, startPositionInBuffer) {
   reader.skip(startPositionInBuffer);
 
   const magicNumber = reader.readUint32();
+  if (magicNumber !== zip64EocdLocatorMagicNumber) {
+    throw new Error(`Invalid SZI file: Zip64 End Of Central Directory Locator has unexpected magic number`);
+  }
   const diskNumber = reader.readUint32();
   const zip64EocdOffset = reader.readUint64();
   const totalNumberOfDisks = reader.readUint32();
@@ -80,6 +95,10 @@ function readZip64EocdRecord(arrayBuffer, startPositionInBuffer) {
   reader.skip(startPositionInBuffer);
 
   const magicNumber = reader.readUint32();
+  if (magicNumber !== zip64EocdRecordMagicNumber) {
+    throw new Error(`Invalid SZI file: Zip64 End Of Central Directory Record has unexpected magic number`);
+  }
+
   const sizeOfEocdRecord = reader.readUint64() + 12; // as read, doesn't include this and previous field
   const versionMadeBy = reader.readUint16();
   const versionNeededToExtract = reader.readUint16();
@@ -141,8 +160,8 @@ function readCentralDirectory(arrayBuffer, totalEntries) {
   const centralDirectory = [];
   for (let i = 0; i < totalEntries; i++) {
     const magicNumber = reader.readUint32();
-    if (magicNumber !== 0x02014b50) {
-      throw new Error(`Invalid SZI file: entry ${i} has unexpected magic number`);
+    if (magicNumber !== centralDirectoryHeaderMagicNumber) {
+      throw new Error(`Invalid SZI file: Central Directory Header ${i} has unexpected magic number`);
     }
 
     const versionMadeBy = reader.readUint16();
@@ -306,13 +325,20 @@ export class SziFileReader {
     }
 
     const arrayBuffer = await this.sziFile.fetchRange(location.entryStart, location.maxEntryEnd, abortSignal);
-
     const reader = new LittleEndianDataReader(arrayBuffer, 0);
 
-    // We need to make sure we read past the entire local header correctly before trying to read the body.
-    // We can't just use the central directory header data to determine the length of the extra fields
-    // because various extra fields inconsistently appear either one or the other.
-    reader.skip(localHeaderBeforeVariableFieldsSize);
+    const magicNumber = reader.readUint32();
+    if (magicNumber !== localFileHeaderMagicNumber) {
+      throw new Error(`Invalid SZI file: Local Header for ${filename} has unexpected magic number`);
+    }
+    const version = reader.readUint16();
+    const bitFlag = reader.readUint16();
+    const compressionMethod = reader.readUint16();
+    const lastModifiedTime = reader.readUint16();
+    const lastModifiedDate = reader.readUint16();
+    const crc32 = reader.readUint32();
+    const compressedSize = reader.readUint32();
+    const uncompressedSize = reader.readUint32();
     const filenameLengthInHeader = reader.readUint16();
     const extraFieldsLength = reader.readUint16();
     const filenameInHeader = reader.readUtf8String(filenameLengthInHeader);
