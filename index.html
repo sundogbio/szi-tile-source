@@ -82,6 +82,21 @@
             </script>
         </div>
         <div class="osd-and-title">
+            <h1>szi jpeg, forced to be zip64</h1>
+            <div id="osd-szi-jpeg-force-zip64" class="osd"></div>
+            <script type="module">
+                const sziUrl = 'examples/zipped/mixmas-jpeg-force-zip64.szi';
+                OpenSeadragon.SziTileSource.createSziTileSource(sziUrl).then(async tileSource => {
+                    const viewer = new OpenSeadragon.Viewer({
+                        id: "osd-szi-jpeg-force-zip64",
+                        prefixUrl: "https://cdnjs.cloudflare.com/ajax/libs/openseadragon/5.0.1/images/",
+                        tileSources: [tileSource],
+                    });
+
+                })
+            </script>
+        </div>
+        <div class="osd-and-title">
             <h1>szi webp</h1>
             <div id="osd-szi-webp" class="osd"></div>
             <script type="module">
