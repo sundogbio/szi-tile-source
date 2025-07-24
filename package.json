@@ -24,6 +24,7 @@
   },
   "private": true,
   "devDependencies": {
+    "fast-xml-parser": "^5.2.5",
     "jsdom": "^26.1.0",
     "openseadragon": "^5.0.1",
     "prettier": "^3.6.2",

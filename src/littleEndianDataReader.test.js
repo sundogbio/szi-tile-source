@@ -1,27 +1,6 @@
-import { expect, test, it, describe } from 'vitest';
+import { describe, expect, test } from 'vitest';
 import { LittleEndianDataReader } from './littleEndianDataReader.js';
-
-function bufferFromHex(hexString) {
-  const bytes = [];
-  let currentByteString = '';
-  for (let i = 0; i < hexString.length; i++) {
-    const currentChar = hexString.substring(i, i + 1);
-    if (currentChar !== ' ') {
-      currentByteString += currentChar;
-    }
-
-    if (currentByteString.length === 2) {
-      bytes.push(parseInt(currentByteString, 16));
-      currentByteString = '';
-    }
-  }
-
-  if (currentByteString.length) {
-    throw new Error('Odd number of hex chars in string!');
-  }
-
-  return Uint8Array.from(bytes).buffer;
-}
+import { bufferFromHex } from './testHelpers.js';
 
 describe('Test valid UTF8 strings', async () => {
   test.each([

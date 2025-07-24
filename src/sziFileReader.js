@@ -301,6 +301,10 @@ export class SziFileReader {
 
   fetchFileBody = async (filename, abortSignal) => {
     const location = this.contents.get(filename);
+    if (!location) {
+      throw new Error(`${filename} is not present inside this .szi file`);
+    }
+
     const arrayBuffer = await this.sziFile.fetchRange(location.entryStart, location.maxEntryEnd, abortSignal);
 
     const reader = new LittleEndianDataReader(arrayBuffer, 0);
@@ -340,5 +344,11 @@ export class SziFileReader {
     }
 
     return dziFilename;
+  };
+
+  tilesDirectory = () => {
+    const dziFilename = this.dziFilename();
+    const path = dziFilename.split('/')[0];
+    return `${path}/${path}_files/`;
   };
 }
