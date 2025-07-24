@@ -58,7 +58,7 @@ function readEocd(arrayBuffer, startPositionInBuffer) {
   const centralDirectorySize = reader.readUint32();
   const centralDirectoryOffset = reader.readUint32();
   const commentLength = reader.readUint16();
-  const comment = commentLength > 0 ? reader.readString(commentLength) : '';
+  const comment = commentLength > 0 ? reader.readUtf8String(commentLength) : '';
 
   return { totalEntries, centralDirectorySize, centralDirectoryOffset };
 }
@@ -170,7 +170,18 @@ function readCentralDirectory(arrayBuffer, totalEntries) {
     const externalFileAttributes = reader.readUint32();
     const relativeOffsetOfLocalHeader = reader.readUint32();
 
-    const filename = reader.readString(filenameLength);
+    // So, technically, the ZIP file format specifies that the name of files should be encoded
+    // as CP-437 unless the 11th bit of bitFlag is set. But most encoders do use UTF-8 now,
+    // with some of them not setting that flag, and CP-437, being a pre-Windows DOS encoding, isn't
+    // part of the standard set of JS encodings available in the browser. Given that the only name
+    // in the SZI that we are interested is the original image name, and its use in the
+    // imagename/imagename.dzi and imagename_files/ patterns, it's safe enough to read in as UTF-8.
+    //
+    // This might result in some non-ASCII characters being mapped to odd bits of UTF-8, or to the
+    // U+FFFD replacement characters, but this will be done consistently, and the all-important '/',
+    // '_files', and '.dzi' will be conserved, so for the purposes of generating the contents table
+    // and serving up tiles, it's fine if the name looks a little corrupted.
+    const filename = reader.readUtf8String(filenameLength);
 
     const extraFields = readZip64ExtraFields(reader, extraFieldLength, {
       compressedSize,
@@ -178,7 +189,7 @@ function readCentralDirectory(arrayBuffer, totalEntries) {
       diskNumberStart,
       relativeOffsetOfLocalHeader,
     });
-    const fileComment = reader.readString(fileCommentLength);
+    const fileComment = reader.readUtf8String(fileCommentLength);
 
     centralDirectory.push({
       compressedSize: extraFields.compressedSize,
@@ -300,7 +311,7 @@ export class SziFileReader {
     reader.skip(localHeaderBeforeVariableFieldsSize);
     const filenameLengthInHeader = reader.readUint16();
     const extraFieldsLength = reader.readUint16();
-    const filenameInHeader = reader.readString(filenameLengthInHeader);
+    const filenameInHeader = reader.readUtf8String(filenameLengthInHeader);
     if (filenameInHeader !== filename) {
       throw new Error(`Trying to read ${filename} but actually got ${filenameInHeader}`);
     }

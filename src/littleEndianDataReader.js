@@ -15,7 +15,7 @@ export class LittleEndianDataReader {
   checkBounds(newPos) {
     if (newPos < 0) {
       throw new Error('Trying to move before start of buffer');
-    } else if (newPos > this.buffer) {
+    } else if (newPos > this.buffer.byteLength) {
       throw new Error('Trying to move after end of buffer');
     }
   }
@@ -50,13 +50,13 @@ export class LittleEndianDataReader {
     if (bigInt > Number.MAX_SAFE_INTEGER) {
       // TODO: this is to stop things getting messy, and we can probably lift it later
       // TODO: but for now it means that we can use numbers everywhere...
-      throw new Error('Only values upto 2^53 are supported!');
+      throw new Error('Only values upto 2^53 - 1 are supported!');
     }
 
     return Number(bigInt);
   }
 
-  readString(len) {
+  readUtf8String(len) {
     const bytes = this.readUint8Array(len);
     return new TextDecoder().decode(bytes);
   }
