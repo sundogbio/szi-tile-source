@@ -3,9 +3,11 @@
   "version": "0.0.1",
   "description": "",
   "type": "module",
-  "files": ["dist"],
-  "main" : "./dist/szi-tile-source.umd.cjs",
-  "module" : "./dist/szi-tile-source.js",
+  "files": [
+    "dist"
+  ],
+  "main": "./dist/szi-tile-source.umd.cjs",
+  "module": "./dist/szi-tile-source.js",
   "exports": {
     ".": {
       "import": "./dist/szi-tile-source.js",
