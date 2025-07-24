@@ -71,6 +71,7 @@ describe('Check well formed example files are readable', async () => {
     ['mixmas-jpeg-force-zip64.szi', 'jpeg'],
     ['mixmas-png.szi', 'png'],
     ['mixmas-webp.szi', 'webp'],
+    ['emoji-eyes-internal-filename-png.szi', 'png'],
   ])('%s is readable', async (filename, type) => {
     const localFile = await LocalFile.create('./public/examples/zipped/' + filename);
     const sziFileReader = await SziFileReader.create(localFile);
@@ -92,4 +93,11 @@ describe('Check well formed example files are readable', async () => {
         break;
     }
   });
+});
+
+test('Compressed SZI errors out', async () => {
+  const compressedFile = await LocalFile.create('./public/examples/problematic/eye-png-compressed.szi');
+  await expect(SziFileReader.create(compressedFile)).rejects.toThrowError(
+    /Invalid SZI file: compressedSize: \d* and uncompressedSize: \d* don't match for .*!/,
+  );
 });

@@ -155,13 +155,6 @@ function readCentralDirectory(arrayBuffer, totalEntries) {
     const compressedSize = reader.readUint32();
     const uncompressedSize = reader.readUint32();
 
-    if (compressedSize !== uncompressedSize) {
-      throw new Error(
-        `Invalid SZI file: compressedSize: ${compressedSize}` +
-          `and uncompressedSize: ${uncompressedSize} don't match!`,
-      );
-    }
-
     const filenameLength = reader.readUint16();
     const extraFieldLength = reader.readUint16();
     const fileCommentLength = reader.readUint16();
@@ -182,6 +175,13 @@ function readCentralDirectory(arrayBuffer, totalEntries) {
     // '_files', and '.dzi' will be conserved, so for the purposes of generating the contents table
     // and serving up tiles, it's fine if the name looks a little corrupted.
     const filename = reader.readUtf8String(filenameLength);
+
+    if (compressedSize !== uncompressedSize) {
+      throw new Error(
+        `Invalid SZI file: compressedSize: ${compressedSize} ` +
+          `and uncompressedSize: ${uncompressedSize} don't match for ${filename}!`,
+      );
+    }
 
     const extraFields = readZip64ExtraFields(reader, extraFieldLength, {
       compressedSize,
