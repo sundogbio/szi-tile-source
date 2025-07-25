@@ -43,11 +43,14 @@ function findBackwards(bytesToSearchIn, bytesToFind) {
   return -1;
 }
 
-function findStartOfEocd(arrayBuffer) {
-  const magicNumberAsUint8Array = new Uint8Array(4);
-  new DataView(magicNumberAsUint8Array.buffer).setUint32(0, eocdMagicNumber, true);
+function uint8ArrayFromUint32(uint32) {
+  const uint8Array = new Uint8Array(4);
+  new DataView(uint8Array.buffer).setUint32(0, eocdMagicNumber, true);
+  return uint8Array;
+}
 
-  const startOfEocdsInBytes = findBackwards(new Uint8Array(arrayBuffer), magicNumberAsUint8Array);
+function findStartOfEocd(arrayBuffer) {
+  const startOfEocdsInBytes = findBackwards(new Uint8Array(arrayBuffer), uint8ArrayFromUint32(eocdMagicNumber));
   if (startOfEocdsInBytes === -1) {
     throw new Error('Invalid SZI file, no End Of Central Directory Record found');
   }
