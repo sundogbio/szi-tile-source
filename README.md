@@ -38,12 +38,14 @@ systems by transparently caching the Central Directory on the client side instea
 
 ### Installation and loading
 
-The library currently isn't distributed anywhere, this will hopefully change soon! For now, you can
-follow the instructions on [building for distribution below](#development), which should output two
-files to the `dist` folder, which you can then copy to your own project. There is an old
-school '.cjs' file available, but we recommend using the ES module file.
+The library currently isn't distributed anywhere, this will hopefully change soon! For now, you
+can grab the one or the other of the files in the `dist` folder, which you can then copy into your
+own project. We build both ES and UMD modules, called `szi-tile-source.js` and
+`szi-tile-source.umd.cjs` respectively.
 
-To make sure this loads correctly, as well as importing it you need to make sure to call
+#### ES module
+
+To make sure this loads correctly, as well as importing it you need to call
 `enableSziTileSource` before first use. This creates the `SziTileSource` class as an extension of
 `OpenSeadragon.DziTileSource` and places it in the `OpenSeadragon` namespace.
 
@@ -68,6 +70,17 @@ Alternatively, if you are using it an ES module, just the following is needed:
     import { enableSziTileSource } from "./dist/szi-tile-source.js";
     enableSziTileSource(OpenSeadragon);
 
+```
+
+#### UMD module
+
+This should automatically load the `SziTileSource` into the OSD namespace on execution, so you only
+need  to do the following (with `dist` being replaced by the location of the file in your own 
+project):
+
+```html
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/openseadragon/5.0.1/openseadragon.js"></script>
+    <script src="./dist/szi-tile-source.umd.cjs"></script>
 ```
 
 
