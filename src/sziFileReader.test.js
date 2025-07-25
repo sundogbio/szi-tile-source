@@ -68,6 +68,7 @@ describe('Check well formed example files are readable', async () => {
     ['mixmas-jpeg.szi', 'jpeg'],
     ['mixmas-jpeg-manually-zipped.szi', 'jpeg'],
     ['mixmas-jpeg-with-comment.szi', 'jpeg'],
+    ['mixmas-jpeg-with-bad-comment.szi', 'jpeg'],
     ['mixmas-jpeg-force-zip64.szi', 'jpeg'],
     ['mixmas-png.szi', 'png'],
     ['mixmas-webp.szi', 'webp'],

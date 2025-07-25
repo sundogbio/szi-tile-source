@@ -97,6 +97,21 @@
             </script>
         </div>
         <div class="osd-and-title">
+            <h1>szi jpeg, with safe comment</h1>
+            <div id="osd-szi-jpeg-with-comment" class="osd"></div>
+            <script type="module">
+                const sziUrl = 'examples/zipped/mixmas-jpeg-with-comment.szi';
+                OpenSeadragon.SziTileSource.createSziTileSource(sziUrl).then(async tileSource => {
+                    const viewer = new OpenSeadragon.Viewer({
+                        id: "osd-szi-jpeg-with-comment",
+                        prefixUrl: "https://cdnjs.cloudflare.com/ajax/libs/openseadragon/5.0.1/images/",
+                        tileSources: [tileSource],
+                    });
+
+                })
+            </script>
+        </div>
+        <div class="osd-and-title">
             <h1>szi jpeg, with bad comment</h1>
             <div id="osd-szi-jpeg-with-bad-comment" class="osd"></div>
             <script type="module">
