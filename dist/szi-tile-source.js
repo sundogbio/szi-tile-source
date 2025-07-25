@@ -23,10 +23,10 @@ class m {
       });
       if (!r.ok)
         throw new Error(`HTTP error! Status: ${r.status}`);
-      const n = r.headers.get("content-length");
-      if (!n)
+      const i = r.headers.get("content-length");
+      if (!i)
         throw new Error("Couldn't get content length from headers");
-      return parseInt(n, 10);
+      return parseInt(i, 10);
     } catch (r) {
       throw console.error("Error getting file size:", r), r;
     }
@@ -54,8 +54,8 @@ class m {
       throw new Error(`Start of fetch range (${t}) out of bounds (0 - ${this.size})!`);
     if (t > e)
       throw new Error(`Start of fetch range (${t}) greater than end (${e})!`);
-    const n = `bytes=${t}-${e - 1}`, i = this.fetchOptions.headers ? { ...this.fetchOptions.headers, Range: n } : { Range: n }, a = await fetch(this.url, {
-      headers: i,
+    const i = `bytes=${t}-${e - 1}`, n = this.fetchOptions.headers ? { ...this.fetchOptions.headers, Range: i } : { Range: i }, a = await fetch(this.url, {
+      headers: n,
       signal: r,
       mode: this.fetchOptions.mode,
       credentials: this.fetchOptions.credentials
@@ -65,7 +65,7 @@ class m {
     return await a.arrayBuffer();
   };
 }
-class l {
+class u {
   constructor(t) {
     this.buffer = t, this.view = new DataView(t), this.pos = 0;
   }
@@ -110,88 +110,94 @@ class l {
     this.checkBounds(e), this.pos = e;
   }
 }
-const f = 4294967295, w = 65535, y = w, S = 22, U = 20, O = 1, z = 101010256, D = 117853008, L = 101075792, R = 33639248, I = 67324752;
-function $(o, t) {
-  if (t.length > o.length)
+const l = 4294967295, w = 65535, S = w, z = 22, U = 20, O = 1, b = 101010256, D = 117853008, L = 101075792, R = 33639248, A = 67324752;
+function I(o, t, e) {
+  if (e.length > o.length)
     return -1;
-  for (let e = o.length - t.length; e > -1; e--) {
-    let r = !0;
-    for (let n = 0; n < t.length && r; n++)
-      o.at(e + n) !== t.at(n) && (r = !1);
-    if (r)
-      return e;
+  t = Math.min(t, o.length - e.length);
+  for (let r = t; r > -1; r--) {
+    let i = !0;
+    for (let n = 0; n < e.length && i; n++)
+      o.at(r + n) !== e.at(n) && (i = !1);
+    if (i)
+      return r;
   }
   return -1;
 }
-function k(o) {
+function $(o) {
   const t = new Uint8Array(4);
-  return new DataView(t.buffer).setUint32(0, z, !0), t;
+  return new DataView(t.buffer).setUint32(0, b, !0), t;
 }
-function v(o) {
-  const t = $(new Uint8Array(o), k());
-  if (t === -1)
+function k(o) {
+  const t = new Uint8Array(o), e = $();
+  let r = o.byteLength - z;
+  for (; r >= 0; ) {
+    const i = I(t, r, e);
+    if (i === -1)
+      throw new Error("Invalid SZI file, no valid End Of Central Directory Record found");
+    const n = new u(o);
+    if (n.skip(i), n.readUint32() !== b)
+      throw new Error("Programming Error: End Of Central Directory Record has unexpected magic number");
+    n.readUint16(), n.readUint16(), n.readUint16();
+    const s = n.readUint16(), c = n.readUint32(), d = n.readUint32(), f = n.readUint16();
+    if (n.pos + f === o.byteLength)
+      return f > 0 && n.readUtf8String(f), { totalEntries: s, centralDirectorySize: c, centralDirectoryOffset: d, startOfEocdInBuffer: i };
+    r = i - 1;
+  }
+  if (r < 0)
     throw new Error("Invalid SZI file, no End Of Central Directory Record found");
-  return t;
 }
-function x(o, t) {
-  const e = new l(o);
-  if (e.skip(t), e.readUint32() !== z)
-    throw new Error("Invalid SZI file: End Of Central Directory Record has unexpected magic number");
-  e.readUint16(), e.readUint16(), e.readUint16();
-  const n = e.readUint16(), i = e.readUint32(), a = e.readUint32(), s = e.readUint16();
-  return s > 0 && e.readUtf8String(s), { totalEntries: n, centralDirectorySize: i, centralDirectoryOffset: a };
-}
-function B(o, t) {
-  const e = new l(o);
+function v(o, t) {
+  const e = new u(o);
   if (e.skip(t), e.readUint32() !== D)
     throw new Error("Invalid SZI file: Zip64 End Of Central Directory Locator has unexpected magic number");
   e.readUint32();
-  const n = e.readUint64();
-  return e.readUint32(), { zip64EocdOffset: n };
+  const i = e.readUint64();
+  return e.readUint32(), { zip64EocdOffset: i };
 }
 function C(o, t) {
-  const e = new l(o);
+  const e = new u(o);
   if (e.skip(t), e.readUint32() !== L)
     throw new Error("Invalid SZI file: Zip64 End Of Central Directory Record has unexpected magic number");
-  const n = e.readUint64() + 12;
+  const i = e.readUint64() + 12;
   e.readUint16(), e.readUint16(), e.readUint32(), e.readUint32(), e.readUint64();
-  const i = e.readUint64(), a = e.readUint64(), s = e.readUint64(), c = n - e.pos - t;
-  return e.skip(c), { totalEntries: i, centralDirectorySize: a, centralDirectoryOffset: s };
+  const n = e.readUint64(), a = e.readUint64(), s = e.readUint64(), c = i - e.pos - t;
+  return e.skip(c), { totalEntries: n, centralDirectorySize: a, centralDirectoryOffset: s };
 }
-function N(o, t, e) {
-  let { compressedSize: r, uncompressedSize: n, diskNumberStart: i, relativeOffsetOfLocalHeader: a } = e;
+function x(o, t, e) {
+  let { compressedSize: r, uncompressedSize: i, diskNumberStart: n, relativeOffsetOfLocalHeader: a } = e;
   const s = o.pos;
   for (; o.pos - s < t; ) {
     const c = o.readUint16(), d = o.readUint16();
-    c === O ? (n === f && (n = o.readUint64()), r === f && (r = o.readUint64()), a === f && (a = o.readUint64()), i === w && (i = o.readUint32())) : o.skip(d);
+    c === O ? (i === l && (i = o.readUint64()), r === l && (r = o.readUint64()), a === l && (a = o.readUint64()), n === w && (n = o.readUint32())) : o.skip(d);
   }
   return {
     compressedSize: r,
-    uncompressedSize: n,
-    diskNumberStart: i,
+    uncompressedSize: i,
+    diskNumberStart: n,
     relativeOffsetOfLocalHeader: a
   };
 }
-function A(o, t) {
-  const e = new l(o), r = [];
-  for (let n = 0; n < t; n++) {
+function N(o, t) {
+  const e = new u(o), r = [];
+  for (let i = 0; i < t; i++) {
     if (e.readUint32() !== R)
-      throw new Error(`Invalid SZI file: Central Directory Header ${n} has unexpected magic number`);
+      throw new Error(`Invalid SZI file: Central Directory Header ${i} has unexpected magic number`);
     e.readUint16(), e.readUint16(), e.readUint16(), e.readUint16(), e.readUint16(), e.readUint16(), e.readUint32();
-    const a = e.readUint32(), s = e.readUint32(), c = e.readUint16(), d = e.readUint16(), u = e.readUint16(), E = e.readUint16();
+    const a = e.readUint32(), s = e.readUint32(), c = e.readUint16(), d = e.readUint16(), f = e.readUint16(), E = e.readUint16();
     e.readUint16(), e.readUint32();
-    const b = e.readUint32(), g = e.readUtf8String(c);
+    const y = e.readUint32(), g = e.readUtf8String(c);
     if (a !== s)
       throw new Error(
         `Invalid SZI file: compressedSize: ${a} and uncompressedSize: ${s} don't match for ${g}!`
       );
-    const h = N(e, d, {
+    const h = x(e, d, {
       compressedSize: a,
       uncompressedSize: s,
       diskNumberStart: E,
-      relativeOffsetOfLocalHeader: b
+      relativeOffsetOfLocalHeader: y
     });
-    e.readUtf8String(u), r.push({
+    e.readUtf8String(f), r.push({
       compressedSize: h.compressedSize,
       uncompressedSize: h.uncompressedSize,
       relativeOffsetOfLocalHeader: h.relativeOffsetOfLocalHeader,
@@ -200,39 +206,39 @@ function A(o, t) {
   }
   return r;
 }
-async function F(o) {
-  const t = o.size - (U + S + y), e = await o.fetchRange(Math.max(0, t), o.size), r = v(e), { totalEntries: n, centralDirectoryOffset: i, centralDirectorySize: a } = x(e, r);
-  if (n === w || i === f || a === f) {
-    const c = r - U, d = B(e, c), u = await o.fetchRange(
+async function B(o) {
+  const t = Math.max(0, o.size - (U + z + S)), e = await o.fetchRange(t, o.size), { totalEntries: r, centralDirectoryOffset: i, centralDirectorySize: n, startOfEocdInBuffer: a } = k(e);
+  if (r === w || i === l || n === l) {
+    const c = a - U, d = v(e, c), f = await o.fetchRange(
       d.zip64EocdOffset,
       t + c
     );
-    return C(u, 0);
+    return C(f, 0);
   } else
-    return { totalEntries: n, centralDirectoryOffset: i, centralDirectorySize: a };
+    return { totalEntries: r, centralDirectoryOffset: i, centralDirectorySize: n };
 }
 function H(o, t) {
   const e = /* @__PURE__ */ new Map(), r = o.toSorted(
-    (i, a) => a.relativeOffsetOfLocalHeader - i.relativeOffsetOfLocalHeader
+    (n, a) => a.relativeOffsetOfLocalHeader - n.relativeOffsetOfLocalHeader
   );
-  let n = t;
-  for (const i of r) {
-    const a = i.relativeOffsetOfLocalHeader;
-    e.set(i.filename, {
+  let i = t;
+  for (const n of r) {
+    const a = n.relativeOffsetOfLocalHeader;
+    e.set(n.filename, {
       start: a,
-      maxEnd: n,
-      bodyLength: i.uncompressedSize
-    }), n = a;
+      maxEnd: i,
+      bodyLength: n.uncompressedSize
+    }), i = a;
   }
   return e;
 }
-async function Z(o) {
-  const { totalEntries: t, centralDirectoryOffset: e, centralDirectorySize: r } = await F(o), n = await o.fetchRange(e, e + r), i = A(n, t);
-  return H(i, e);
+async function F(o) {
+  const { totalEntries: t, centralDirectoryOffset: e, centralDirectorySize: r } = await B(o), i = await o.fetchRange(e, e + r), n = N(i, t);
+  return H(n, e);
 }
 class p {
   static create = async (t) => {
-    const e = await Z(t);
+    const e = await F(t);
     return new p(t, e);
   };
   constructor(t, e) {
@@ -242,14 +248,14 @@ class p {
     const r = this.contents.get(t);
     if (!r)
       throw new Error(`${t} is not present inside this .szi file`);
-    const n = await this.sziFile.fetchRange(r.start, r.maxEnd, e), i = new l(n, 0);
-    if (i.readUint32() !== I)
+    const i = await this.sziFile.fetchRange(r.start, r.maxEnd, e), n = new u(i, 0);
+    if (n.readUint32() !== A)
       throw new Error(`Invalid SZI file: Local Header for ${t} has unexpected magic number`);
-    i.readUint16(), i.readUint16(), i.readUint16(), i.readUint16(), i.readUint16(), i.readUint32(), i.readUint32(), i.readUint32();
-    const s = i.readUint16(), c = i.readUint16(), d = i.readUtf8String(s);
+    n.readUint16(), n.readUint16(), n.readUint16(), n.readUint16(), n.readUint16(), n.readUint32(), n.readUint32(), n.readUint32();
+    const s = n.readUint16(), c = n.readUint16(), d = n.readUtf8String(s);
     if (d !== t)
       throw new Error(`Trying to read ${t} but actually got ${d}`);
-    return i.skip(c), i.readUint8Array(r.bodyLength);
+    return n.skip(c), n.readUint8Array(r.bodyLength);
   };
   dziFilename = () => {
     let t = "";
@@ -268,7 +274,7 @@ class p {
     return `${e}/${e}_files/`;
   };
 }
-const T = (o) => {
+const Z = (o) => {
   class t extends o.DziTileSource {
     /**
      * Create an SZI tile source for use with OpenSeadragon.
@@ -282,18 +288,18 @@ const T = (o) => {
      * @param fetchOptions.headers additional HTTP headers to send with each request
      * @returns {Promise<SziTileSource>}
      */
-    static createSziTileSource = async (r, n = {}) => {
-      if (n && n.mode === "no-cors")
+    static createSziTileSource = async (r, i = {}) => {
+      if (i && i.mode === "no-cors")
         throw new Error("'no-cors' mode is not supported, as Range headers don't work with it");
-      const i = await m.create(r, n), a = await p.create(i), s = await this.readOptionsFromDziXml(a);
+      const n = await m.create(r, i), a = await p.create(n), s = await this.readOptionsFromDziXml(a);
       return new t(a, s);
     };
     static async readOptionsFromDziXml(r) {
-      const n = r.dziFilename(), i = await r.fetchFileBody(n), a = new TextDecoder().decode(i), s = o.parseXml(a);
-      return o.DziTileSource.prototype.configure(s, n, "");
+      const i = r.dziFilename(), n = await r.fetchFileBody(i), a = new TextDecoder().decode(n), s = o.parseXml(a);
+      return o.DziTileSource.prototype.configure(s, i, "");
     }
-    constructor(r, n) {
-      super(n), this.remoteSziReader = r;
+    constructor(r, i) {
+      super(i), this.remoteSziReader = r;
     }
     /**
      * Download tile data. This is a cut down implementation of the XML-specific path of TileSource.Download
@@ -308,22 +314,22 @@ const T = (o) => {
      * @param {Function} [context.finish] - Should be called unless abort() was executed, e.g. on all occasions,
      */
     downloadTileStart = (r) => {
-      const n = new Image();
-      n.onload = function() {
-        i(), r.finish(n, r.userData.request, null);
-      }, n.onabort = n.onerror = function() {
-        i(), r.finish(null, r.userData.request, "Image load aborted.");
+      const i = new Image();
+      i.onload = function() {
+        n(), r.finish(i, r.userData.request, null);
+      }, i.onabort = i.onerror = function() {
+        n(), r.finish(null, r.userData.request, "Image load aborted.");
       };
-      const i = () => {
-        n.onload = n.onerror = n.onabort = null;
+      const n = () => {
+        i.onload = i.onerror = i.onabort = null;
       };
-      r.userData.image = n, r.userData.abortController = new AbortController(), this.remoteSziReader.fetchFileBody(r.src, r.userData.abortController.signal).then(
+      r.userData.image = i, r.userData.abortController = new AbortController(), this.remoteSziReader.fetchFileBody(r.src, r.userData.abortController.signal).then(
         (a) => {
           const s = new Blob([a]);
-          s.size === 0 ? (i(), r.finish(null, null, "Empty image!")) : n.src = (window.URL || window.webkitURL).createObjectURL(s);
+          s.size === 0 ? (n(), r.finish(null, null, "Empty image!")) : i.src = (window.URL || window.webkitURL).createObjectURL(s);
         },
         (a) => {
-          i(), r.finish(null, null, "Download failed: " + a.message);
+          n(), r.finish(null, null, "Download failed: " + a.message);
         }
       );
     };
@@ -334,17 +340,17 @@ const T = (o) => {
      * @param {*} [context.userData] - Empty object to attach (and mainly read) your own data.
      */
     downloadTileAbort = (r) => {
-      const n = r.userData.abortController;
-      n && n.abort();
-      const i = r.userData.image;
-      i && (i.onload = i.onerror = i.onabort = null);
+      const i = r.userData.abortController;
+      i && i.abort();
+      const n = r.userData.image;
+      n && (n.onload = n.onerror = n.onabort = null);
     };
   }
   o.SziTileSource = t;
 };
 (function(o, t) {
   typeof exports > "u" || typeof o.OpenSeadragon < "u" && t(o.OpenSeadragon);
-})(typeof window < "u" ? window : void 0, T);
+})(typeof window < "u" ? window : void 0, Z);
 export {
-  T as enableSziTileSource
+  Z as enableSziTileSource
 };
