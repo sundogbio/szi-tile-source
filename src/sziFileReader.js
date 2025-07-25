@@ -23,12 +23,14 @@ const localFileHeaderMagicNumber = 0x04034b50;
  * @return -1 if bytesToFind is not found, otherwise the index of
  *         the start of the last occurrence of bytesToFind in bytesToSearchIn
  */
-function findBackwards(bytesToSearchIn, bytesToFind) {
+function findBackwards(bytesToSearchIn, startSearchFrom, bytesToFind) {
   if (bytesToFind.length > bytesToSearchIn.length) {
     return -1;
   }
 
-  for (let i = bytesToSearchIn.length - bytesToFind.length; i > -1; i--) {
+  startSearchFrom = Math.min(startSearchFrom, bytesToSearchIn.length - bytesToFind.length);
+
+  for (let i = startSearchFrom; i > -1; i--) {
     let found = true;
     for (let j = 0; j < bytesToFind.length && found; j++) {
       if (bytesToSearchIn.at(i + j) !== bytesToFind.at(j)) {
@@ -49,33 +51,59 @@ function uint8ArrayFromUint32(uint32) {
   return uint8Array;
 }
 
-function findStartOfEocd(arrayBuffer) {
-  const startOfEocdsInBytes = findBackwards(new Uint8Array(arrayBuffer), uint8ArrayFromUint32(eocdMagicNumber));
-  if (startOfEocdsInBytes === -1) {
+/**
+ * Look for the End Of Central Directory Record by searching backwards in the supplied buffer for
+ * its magic number and then attempting to read in an EOCD forward of that point. If the EOCD is
+ * well-formed, and exactly reaches the end of the buffer, we can be pretty sure that we have
+ * a valid EOCD. If it isn't well-formed, and doesn't reach the end, then it's possible that the
+ * magic number just happened to appear in the comment, and we restart the search from where we
+ * left off (this is unlikely, given it contains two non-printable characters, but...).
+ *
+ * @param arrayBuffer
+ * @returns {{totalEntries, centralDirectorySize, centralDirectoryOffset, startOfEocdInBuffer: (number|number)}}
+ */
+function findAndReadEocd(arrayBuffer) {
+  const bufferAsUint8Array = new Uint8Array(arrayBuffer);
+  const eocdMagicNumberAsUint8Array = uint8ArrayFromUint32(eocdMagicNumber);
+
+  let startSearchFrom = arrayBuffer.byteLength - eocdSizeWithoutComment; // no point in checking after this!
+  while (startSearchFrom >= 0) {
+    const startOfEocdInBuffer = findBackwards(bufferAsUint8Array, startSearchFrom, eocdMagicNumberAsUint8Array);
+    if (startOfEocdInBuffer === -1) {
+      throw new Error('Invalid SZI file, no valid End Of Central Directory Record found');
+    }
+
+    const reader = new LittleEndianDataReader(arrayBuffer);
+    reader.skip(startOfEocdInBuffer);
+
+    const magicNumber = reader.readUint32();
+    if (magicNumber !== eocdMagicNumber) {
+      // If this happens, it's a logic problem elsewhere, not an artifact of the file..,
+      throw new Error(`Programming Error: End Of Central Directory Record has unexpected magic number`);
+    }
+
+    const diskNumber = reader.readUint16();
+    const startOfCdDiskNumber = reader.readUint16();
+    const entriesOnDisk = reader.readUint16();
+    const totalEntries = reader.readUint16();
+    const centralDirectorySize = reader.readUint32();
+    const centralDirectoryOffset = reader.readUint32();
+    const commentLength = reader.readUint16();
+
+    // If the candidate EOCD ends at the end of the file, we are probably OK!
+    if (reader.pos + commentLength === arrayBuffer.byteLength) {
+      const comment = commentLength > 0 ? reader.readUtf8String(commentLength) : '';
+
+      return { totalEntries, centralDirectorySize, centralDirectoryOffset, startOfEocdInBuffer };
+    }
+
+    // Restart the search, starting from the byte before
+    startSearchFrom = startOfEocdInBuffer - 1;
+  }
+
+  if (startSearchFrom < 0) {
     throw new Error('Invalid SZI file, no End Of Central Directory Record found');
   }
-  return startOfEocdsInBytes;
-}
-
-function readEocd(arrayBuffer, startPositionInBuffer) {
-  const reader = new LittleEndianDataReader(arrayBuffer);
-  reader.skip(startPositionInBuffer);
-
-  const magicNumber = reader.readUint32();
-  if (magicNumber !== eocdMagicNumber) {
-    throw new Error(`Invalid SZI file: End Of Central Directory Record has unexpected magic number`);
-  }
-
-  const diskNumber = reader.readUint16();
-  const startOfCdDiskNumber = reader.readUint16();
-  const entriesOnDisk = reader.readUint16();
-  const totalEntries = reader.readUint16();
-  const centralDirectorySize = reader.readUint32();
-  const centralDirectoryOffset = reader.readUint32();
-  const commentLength = reader.readUint16();
-  const comment = commentLength > 0 ? reader.readUtf8String(commentLength) : '';
-
-  return { totalEntries, centralDirectorySize, centralDirectoryOffset };
 }
 
 function readZip64EocdLocator(arrayBuffer, startPositionInBuffer) {
@@ -234,15 +262,12 @@ function readCentralDirectory(arrayBuffer, totalEntries) {
 async function findCentralDirectoryProperties(sziFile) {
   // To start with, we need to find the End of Central Directory Record - this is at the end of
   // the file, but of variable length thanks to a trailing comment field. So we fetch a buffer of
-  // its maximum length working back from the file end (plus enough to read the Zip64 End of
-  // Central Directory Locator if present)
+  // its maximum possible length working back from the file end (plus enough to read the Zip64
+  // End of Central Directory Locator if present) and try to locate our EOCD in it
   const minEocdsOffset = Math.max(0, sziFile.size - (zip64EocdLocatorSize + eocdSizeWithoutComment + maxCommentSize));
   const eocdArrayBuffer = await sziFile.fetchRange(minEocdsOffset, sziFile.size);
-
-  // To find the start of the End of Central Directory Record we search backwards until we find
-  // its magic number, and then read forwards from that point
-  const startOfEocdInBuffer = findStartOfEocd(eocdArrayBuffer);
-  const { totalEntries, centralDirectoryOffset, centralDirectorySize } = readEocd(eocdArrayBuffer, startOfEocdInBuffer);
+  const { totalEntries, centralDirectoryOffset, centralDirectorySize, startOfEocdInBuffer } =
+    findAndReadEocd(eocdArrayBuffer);
 
   // For large files, one or all of the properties we are interested in might not fit in the 16 or
   // 32 bits available for them in the EOCD, so these are stored in an extended Zip64 EOCD Record...
