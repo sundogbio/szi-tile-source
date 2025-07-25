@@ -244,35 +244,35 @@ async function findCentralDirectoryProperties(sziFile) {
 }
 
 /**
- * Generate a map from the start of a file's entry in the .szi to an upper bound on its end, the latter being
+ * Generate a map from the start of a file's data in the .szi to an upper bound on its end, the latter being
  * either the start of the next file in the .szi, or the beginning of the central directory structures.
  *
  * @param centralDirectory
  * @param centralDirectoryOffset
  * @returns Map<number, number>
  */
-function mapEntryStartToMaxEntryEnd(centralDirectory, centralDirectoryOffset) {
-  const entryToStartToMaxEntryEnd = new Map();
+function mapFileDataStartToMaxEnd(centralDirectory, centralDirectoryOffset) {
+  const fileDataStartToMaxEnd = new Map();
 
-  // Get the entry offsets in descending order
-  const entryStarts = centralDirectory.map((entry) => entry.relativeOffsetOfLocalHeader);
-  entryStarts.sort((a, b) => b - a);
+  // Get the start offsets in descending order...
+  const fileDataStartOffsets = centralDirectory.map((entry) => entry.relativeOffsetOfLocalHeader);
+  fileDataStartOffsets.sort((a, b) => b - a);
 
   if (centralDirectory.length > 0) {
     //...so we can do the special case of the highest offset first
-    let maxEntryEnd = centralDirectoryOffset;
-    for (const entryStart of entryStarts) {
-      entryToStartToMaxEntryEnd.set(entryStart, maxEntryEnd);
-      maxEntryEnd = entryStart;
+    let fileDataMaxEnd = centralDirectoryOffset;
+    for (const fileDataStart of fileDataStartOffsets) {
+      fileDataStartToMaxEnd.set(fileDataStart, fileDataMaxEnd);
+      fileDataMaxEnd = fileDataStart;
     }
   }
 
-  return entryToStartToMaxEntryEnd;
+  return fileDataStartToMaxEnd;
 }
 
 /**
- * Create a map of filenames to the start of their entries in the .szi, an upper bound on the end of their
- * entries, and the expected length of the file body. The start here is the start of the header, with
+ * Create a map of filenames to the start of their data in the .szi, an upper bound on the end of their
+ * data, and the expected length of the file body. The start here is the start of the header, with
  * the upper bound being the start of the next entry in the .szi or the beginning of the central directory
  * structure.
  *
@@ -283,17 +283,17 @@ function mapEntryStartToMaxEntryEnd(centralDirectory, centralDirectoryOffset) {
  *
  * @param centralDirectory
  * @param centralDirectoryOffset
- * @returns Map<string, { entryStart, maxEntryEnd, bodyLength}>
+ * @returns Map<string, { fileDataStart, fileDataMaxEnd, bodyLength}>
  */
 function createTableOfContents(centralDirectory, centralDirectoryOffset) {
-  const entryStartToMaxEntryEnd = mapEntryStartToMaxEntryEnd(centralDirectory, centralDirectoryOffset);
+  const fileDataStartToMaxEnd = mapFileDataStartToMaxEnd(centralDirectory, centralDirectoryOffset);
 
   return centralDirectory.reduce((filenameToLocation, entry) => {
-    const entryStart = entry.relativeOffsetOfLocalHeader;
-    const maxEntryEnd = entryStartToMaxEntryEnd.get(entryStart);
+    const fileDataStart = entry.relativeOffsetOfLocalHeader;
+    const fileDataMaxEnd = fileDataStartToMaxEnd.get(fileDataStart);
     const bodyLength = entry.uncompressedSize;
 
-    filenameToLocation.set(entry.filename, { entryStart, maxEntryEnd, bodyLength });
+    filenameToLocation.set(entry.filename, { fileDataStart, fileDataMaxEnd, bodyLength });
     return filenameToLocation;
   }, new Map());
 }
@@ -324,7 +324,7 @@ export class SziFileReader {
       throw new Error(`${filename} is not present inside this .szi file`);
     }
 
-    const arrayBuffer = await this.sziFile.fetchRange(location.entryStart, location.maxEntryEnd, abortSignal);
+    const arrayBuffer = await this.sziFile.fetchRange(location.fileDataStart, location.fileDataMaxEnd, abortSignal);
     const reader = new LittleEndianDataReader(arrayBuffer, 0);
 
     const magicNumber = reader.readUint32();
