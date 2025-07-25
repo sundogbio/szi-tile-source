@@ -223,15 +223,35 @@ function readCentralDirectory(arrayBuffer, totalEntries) {
   return centralDirectory;
 }
 
+/**
+ * Find and return the properties required to read the Central Directory of the supplied szi file:
+ * its offset in the file, its total size, and the number of entries in it.
+ *
+ * @param sziFile a RemoteFile object, or one satisfying its interface, that points to the szi file whose
+ *
+ * @returns {Promise<{totalEntries: (number), centralDirectorySize: (number), centralDirectoryOffset: (number)}>}
+ */
 async function findCentralDirectoryProperties(sziFile) {
-  const minEocdsOffset = sziFile.size - (zip64EocdLocatorSize + eocdSizeWithoutComment + maxCommentSize);
-  const eocdArrayBuffer = await sziFile.fetchRange(Math.max(0, minEocdsOffset), sziFile.size);
+  // To start with, we need to find the End of Central Directory Record - this is at the end of
+  // the file, but of variable length thanks to a trailing comment field. So we fetch a buffer of
+  // its maximum length working back from the file end (plus enough to read the Zip64 End of
+  // Central Directory Locator if present)
+  const minEocdsOffset = Math.max(0, sziFile.size - (zip64EocdLocatorSize + eocdSizeWithoutComment + maxCommentSize));
+  const eocdArrayBuffer = await sziFile.fetchRange(minEocdsOffset, sziFile.size);
+
+  // To find the start of the End of Central Directory Record we search backwards until we find
+  // its magic number, and then read forwards from that point
   const startOfEocdInBuffer = findStartOfEocd(eocdArrayBuffer);
   const { totalEntries, centralDirectoryOffset, centralDirectorySize } = readEocd(eocdArrayBuffer, startOfEocdInBuffer);
 
+  // For large files, one or all of the properties we are interested in might not fit in the 16 or
+  // 32 bits available for them in the EOCD, so these are stored in an extended Zip64 EOCD Record...
   const zip64 =
     totalEntries === maxUint16 || centralDirectoryOffset === maxUint32 || centralDirectorySize === maxUint32;
   if (zip64) {
+    //...but that Record might be so big that just scanning backwards to find its start is
+    // impractical, so there is an additional Locator that comes after it, that gives the size
+    // and location of the Record
     const startOfZip64EocdLocatorInBuffer = startOfEocdInBuffer - zip64EocdLocatorSize;
     const zip64EocdLocator = readZip64EocdLocator(eocdArrayBuffer, startOfZip64EocdLocatorInBuffer);
 
