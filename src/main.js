@@ -6,7 +6,7 @@ export const enableSziTileSource = (OpenSeadragon) => {
     /**
      * Create an SZI tile source for use with OpenSeadragon.
      *
-     * @param url location of the SZI file we want to read
+     * @param {string} url location of the SZI file we want to read
      * @param fetchOptions options to use when making HTTP requests to fetch parts of the file
      * @param fetchOptions.mode cors mode to use. Note that "no-cors" is not accepted, as it breaks Range requests.
      *        (See: https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API/Using_Fetch#making_cross-origin_requests)
@@ -119,7 +119,7 @@ export const enableSziTileSource = (OpenSeadragon) => {
 
   // Check if OpenSeadragon is available
   if (typeof global.OpenSeadragon !== 'undefined') {
-    // Attach the GeoTIFFTileSource to the OpenSeadragon namespace
+    // Attach the SziTileSource to the OpenSeadragon namespace
     factory(global.OpenSeadragon);
   }
 })(typeof window !== 'undefined' ? window : this, enableSziTileSource);

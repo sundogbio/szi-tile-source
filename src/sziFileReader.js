@@ -18,9 +18,9 @@ const localFileHeaderMagicNumber = 0x04034b50;
 /**
  * Searches backwards in the supplied bytesToSearchIn for the bytesToFind
  *
- * @param bytesToSearchIn
- * @param bytesToFind
- * @return -1 if bytesToFind is not found, otherwise the index of
+ * @param {Uint8Array} bytesToSearchIn
+ * @param {Uint8Array} bytesToFind
+ * @return{number} -1 if bytesToFind is not found, otherwise the index of
  *         the start of the last occurrence of bytesToFind in bytesToSearchIn
  */
 function findBackwards(bytesToSearchIn, startSearchFrom, bytesToFind) {
@@ -45,6 +45,11 @@ function findBackwards(bytesToSearchIn, startSearchFrom, bytesToFind) {
   return -1;
 }
 
+/**
+ * Create Uint8Array containing a little endian representation of the supplied uint32
+ * @param {number} uint32
+ * @returns {Uint8Array}
+ */
 function uint8ArrayFromUint32(uint32) {
   const uint8Array = new Uint8Array(4);
   new DataView(uint8Array.buffer).setUint32(0, eocdMagicNumber, true);
@@ -59,8 +64,13 @@ function uint8ArrayFromUint32(uint32) {
  * magic number just happened to appear in the comment, and we restart the search from where we
  * left off (this is unlikely, given it contains two non-printable characters, but...).
  *
- * @param arrayBuffer
- * @returns {{totalEntries, centralDirectorySize, centralDirectoryOffset, startOfEocdInBuffer: (number|number)}}
+ * @param {ArrayBuffer} arrayBuffer
+ * @returns {{
+ *     totalEntries: (number),
+ *     centralDirectorySize: (number),
+ *     centralDirectoryOffset: (number),
+ *     startOfEocdInBuffer: (number)
+ *  }}
  */
 function findAndReadEocd(arrayBuffer) {
   const bufferAsUint8Array = new Uint8Array(arrayBuffer);
@@ -106,6 +116,13 @@ function findAndReadEocd(arrayBuffer) {
   }
 }
 
+/**
+ * Read the Zip64 End Of Central Directory Record from the supplied array buffer
+ *
+ * @param {ArrayBuffer} arrayBuffer
+ * @param {number} startPositionInBuffer
+ * @returns {{zip64EocdOffset: (*|number)}}
+ */
 function readZip64EocdLocator(arrayBuffer, startPositionInBuffer) {
   const reader = new LittleEndianDataReader(arrayBuffer);
   reader.skip(startPositionInBuffer);
@@ -121,6 +138,13 @@ function readZip64EocdLocator(arrayBuffer, startPositionInBuffer) {
   return { zip64EocdOffset };
 }
 
+/**
+ * Read the Zip64 End Of Central Directory Record from the supplied array buffer
+ *
+ * @param {ArrayBuffer} arrayBuffer
+ * @param {number} startPositionInBuffer
+ * @returns {{totalEntries: (number), centralDirectorySize: (number), centralDirectoryOffset: (number)}}
+ */
 function readZip64EocdRecord(arrayBuffer, startPositionInBuffer) {
   const reader = new LittleEndianDataReader(arrayBuffer);
   reader.skip(startPositionInBuffer);
@@ -148,8 +172,19 @@ function readZip64EocdRecord(arrayBuffer, startPositionInBuffer) {
   return { totalEntries, centralDirectorySize, centralDirectoryOffset };
 }
 
-function readZip64ExtraFields(reader, length, fields) {
-  let { compressedSize, uncompressedSize, diskNumberStart, relativeOffsetOfLocalHeader } = fields;
+/**
+ * Read the extra fields from a Central Directory header.
+ *
+ * The valuesReadFromNormalFields param should contain the values read from the "normal" fields of the header that
+ * might be overridden in the extra fields.
+ *
+ * @param {LittleEndianDataReader} reader
+ * @param {number} length length of the extra fields
+ * @param {compressedSize, uncompressedSize, diskNumberStart, relativeOffsetOfLocalHeader} valuesReadFromNormalFields
+ * @returns {{compressedSize, uncompressedSize, diskNumberStart, relativeOffsetOfLocalHeader}}
+ */
+function readZip64ExtraFields(reader, length, valuesReadFromNormalFields) {
+  let { compressedSize, uncompressedSize, diskNumberStart, relativeOffsetOfLocalHeader } = valuesReadFromNormalFields;
   const initialPos = reader.pos;
 
   while (reader.pos - initialPos < length) {
@@ -186,6 +221,13 @@ function readZip64ExtraFields(reader, length, fields) {
   };
 }
 
+/**
+ * Read all the entries in the Central Directory of an SZI file from the supplied arrayBuffer
+ *
+ * @param {ArrayBuffer} arrayBuffer
+ * @param {number} totalEntries
+ * @returns {{filename: (string), uncompressedSize: (number), relativeOffsetOfLocalHeader: (number)}[]}
+ */
 function readCentralDirectory(arrayBuffer, totalEntries) {
   const reader = new LittleEndianDataReader(arrayBuffer);
   const centralDirectory = [];
@@ -242,7 +284,6 @@ function readCentralDirectory(arrayBuffer, totalEntries) {
     const fileComment = reader.readUtf8String(fileCommentLength);
 
     centralDirectory.push({
-      compressedSize: extraFields.compressedSize,
       uncompressedSize: extraFields.uncompressedSize,
       relativeOffsetOfLocalHeader: extraFields.relativeOffsetOfLocalHeader,
       filename,
@@ -255,7 +296,7 @@ function readCentralDirectory(arrayBuffer, totalEntries) {
  * Find and return the properties required to read the Central Directory of the supplied szi file:
  * its offset in the file, its total size, and the number of entries in it.
  *
- * @param sziFile a RemoteFile object, or one satisfying its interface, that points to the szi file whose
+ * @param {RemoteFile} sziFile a RemoteFile object, or one satisfying its interface, that points to the szi file whose
  *
  * @returns {Promise<{totalEntries: (number), centralDirectorySize: (number), centralDirectoryOffset: (number)}>}
  */
@@ -302,9 +343,9 @@ async function findCentralDirectoryProperties(sziFile) {
  * the file, and the only way to do this is to read up until the next point in the file where we know for
  * sure that something different is happening.
  *
- * @param centralDirectory
- * @param centralDirectoryOffset
- * @returns Map<string, { start, maxEnd, bodyLength}>
+ * @param {[{filename: (string), uncompressedSize: (number), relativeOffsetOfLocalHeader: (number)}]} centralDirectory
+ * @param {number} centralDirectoryOffset
+ * @returns {Map<string, {start : (number), maxEnd: (number), bodyLength: (number)}>}
  */
 function createTableOfContents(centralDirectory, centralDirectoryOffset) {
   const tableOfContents = new Map();
@@ -329,6 +370,12 @@ function createTableOfContents(centralDirectory, centralDirectoryOffset) {
   return tableOfContents;
 }
 
+/**
+ * Fetch the table of contents from the SZI represented by the RemoteFile
+ *
+ * @param {RemoteFile} sziFile
+ * @returns {Promise<Map<string, {start: number, maxEnd: number, bodyLength: number}>>}
+ */
 export async function getContentsOfSziFile(sziFile) {
   const { totalEntries, centralDirectoryOffset, centralDirectorySize } = await findCentralDirectoryProperties(sziFile);
 
@@ -338,7 +385,19 @@ export async function getContentsOfSziFile(sziFile) {
   return createTableOfContents(centralDirectory, centralDirectoryOffset);
 }
 
+/**
+ * SziFileReader wraps a remote (or local) SZI file, and allows its users to fetch the uncompressed body of
+ * any of the files contained within the supplied SZI file.
+ *
+ * Note that you should always use the static create constructor to initialise this class, as this is the
+ * only supported way of generating the table of contents.
+ */
 export class SziFileReader {
+  /**
+   * Asynchronously create an instance of a reader for the supplied SZI remote file
+   * @param {RemoteFile} sziFile
+   * @returns {Promise<SziFileReader>}
+   */
   static create = async (sziFile) => {
     const contents = await getContentsOfSziFile(sziFile);
     return new SziFileReader(sziFile, contents);
@@ -349,6 +408,13 @@ export class SziFileReader {
     this.contents = contents;
   }
 
+  /**
+   * Read the body of the filename contained in the SZI file
+   *
+   * @param {string} filename filename whose body you want to read
+   * @param {AbortSignal} abortSignal AbortController.signal for cancelling the request
+   * @returns {Promise<Uint8Array>} The body of the file specified
+   */
   fetchFileBody = async (filename, abortSignal) => {
     const location = this.contents.get(filename);
     if (!location) {
@@ -383,6 +449,11 @@ export class SziFileReader {
     return reader.readUint8Array(location.bodyLength);
   };
 
+  /**
+   * Find the filename of the .dzi config file inside the contents
+   *
+   * @returns {string}
+   */
   dziFilename = () => {
     let dziFilename = '';
     for (const filename of this.contents.keys()) {
@@ -403,6 +474,13 @@ export class SziFileReader {
     return dziFilename;
   };
 
+  /**
+   * Find the top level tiles directory. This should be of the form
+   * <name>/<name>_files, and contain subdirectories containing tiles
+   * for each zoom level
+   *
+   * @returns {string}
+   */
   tilesDirectory = () => {
     const dziFilename = this.dziFilename();
     const path = dziFilename.split('/')[0];
