@@ -160,13 +160,15 @@ whole SZI file being sent back to the browser.
 
 ## How it works
 
-The basic idea is simple. By setting the Range header on GET requests to a given file, we can fetch
-subsections of the SZI file. On creation of the SziTileSource, we use this technique to fetch the
-file's Central Directory and process it to create a contents table containing the start and end
-locations of the .dzi and the individual tiles. We then use the contents table to fetch the .dzi 
-file to configure the OSD instance, and then, when OSD requests an individual image tile, use it to
-fetch only the part of the SZI file that maps to that image tile. In practice, the actual
-implementation turns out to be a little more complex.
+The basic idea is simple. By setting the Range header on GET requests, we can fetch subsections of
+the SZI file, rather than hauling down the whole thing. When creating the `SziTileSource`, we use
+this technique to fetch the SZI's Central Directory, processing it to create a contents table that
+contains the start and end locations of all the files contained within the SZI. We then use this
+contents table together with the same ranged requests technique to a) fetch the body of the .dzi
+file and configure the parent `DziTileSource` and b) fetch the image tiles when requested by the OSD
+viewer post-configuration.
+
+In practice, the implementation details turn out to be a little more complex.
 
 ### Fetching the Central Directory
 
