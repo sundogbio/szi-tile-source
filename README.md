@@ -40,7 +40,7 @@ systems by transparently caching the Central Directory on the client side instea
 
 The library currently isn't distributed on npm, this will hopefully change soon! For now, you can
 directly download either the latest ES ([szi-tile-source.js](./dist/szi-tile-source.js)) or UMD
-module ([szi-tile-source.umd.cjs](./dist/szi-tile-source.umd.cjs) from the [dist](./dist) folder,
+module ([szi-tile-source.umd.cjs](./dist/szi-tile-source.umd.cjs)) from the [dist](./dist) folder,
 and copy them into your own project.
 
 #### ES module

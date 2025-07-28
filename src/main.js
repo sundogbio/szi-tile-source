@@ -2,9 +2,22 @@ import { RemoteFile } from './remoteFile.js';
 import { SziFileReader } from './sziFileReader.js';
 
 export const enableSziTileSource = (OpenSeadragon) => {
+  /**
+   * SZI Tile Source that enables OpenSeadragon to load remote SZI files.
+   *
+   * This a relatively small extension of the DziTileSource, with a large part of the difference being at the
+   * initialisation stage. The need to do this initialisation asynchronously combined with the need to do superclass
+   * initialisation means that the class has a static factory constructor that must be called explicitly by the
+   * user, as opposed to relying on OSD creating instances automatically in response to its configuration settings.
+   *
+   * For more on how to use this Tile Source see the
+   * [README.md]{@link https://github.com/sundogbio/szi-tile-source/blob/main/README.md#usage}
+   */
   class SziTileSource extends OpenSeadragon.DziTileSource {
     /**
-     * Create an SZI tile source for use with OpenSeadragon.
+     * Create an SZI tile source for use with OpenSeadragon. This static factory constructor should be used
+     * instead of the standard Construct, as the majority of the configuration of the image source happens
+     * here asynchronously.
      *
      * @param {string} url location of the SZI file we want to read
      * @param fetchOptions options to use when making HTTP requests to fetch parts of the file
@@ -36,14 +49,22 @@ export const enableSziTileSource = (OpenSeadragon) => {
       return OpenSeadragon.DziTileSource.prototype.configure(dziXml, dziFilename, '');
     }
 
+    /**
+     * Do not call this directly, for internal use only!
+     *
+     * @param remoteSziReader
+     * @param options
+     */
     constructor(remoteSziReader, options) {
       super(options);
       this.remoteSziReader = remoteSziReader;
     }
 
     /**
-     * Download tile data. This is a cut down implementation of the XML-specific path of TileSource.Download
-     * that instead of calling makeAjaxRequest, uses the remoteSziFileReader instead.
+     * Download tile data. Intended for use by OSD, not end users!
+     *
+     * This is a cut down implementation of the XML-specific path of TileSource.Download
+     * that instead of calling makeAjaxRequest uses the remoteSziFileReader.
      *
      * Note that this ignores all the Ajax options as the remoteSziReader uses the fetchOptions supplied in
      * the createSziTileSourceInstead. Also note that only the documented parts of context are used below.
@@ -91,8 +112,8 @@ export const enableSziTileSource = (OpenSeadragon) => {
     };
 
     /**
-     * Provide means of aborting the execution.
-     * Note that if you override this function, you should override also downloadTileStart().
+     * Provide means of aborting the execution. Intended for use by OSD, not end users!
+     *
      * @param {ImageJob} context job, the same object as with downloadTileStart(..)
      * @param {*} [context.userData] - Empty object to attach (and mainly read) your own data.
      */
