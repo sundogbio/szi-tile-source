@@ -7,18 +7,17 @@ import { expect, test } from 'vitest';
 import OpenSeadragon from 'openseadragon';
 import { getContentsOfSziFile } from './sziFileReader.js';
 
-// This isn't an actual test, just a runner so I can debug as I go. It assumes
-// that you have done 'npx vite' to serve up the examples on a local server to
-// to start with
-test('Test contents', { timeout: 300_000 }, async () => {
+// Basic check that fetching the contents works with a "real" webserver
+test('Test contents', async () => {
   const contents = await getContentsOfSziFile(
     await RemoteFile.create('http://localhost:5173/examples/zipped/mixmas-jpeg.szi', {}),
   );
   expect(contents.size).toBe(150);
 });
 
-// Again, another "test" that is mostly here so I can happily debug the mechanics of constructing the dervied clas
-test('Test construction', { timeout: 300_000 }, async () => {
+// Basic E2E check that the tile source can be created and gives sensible values
+// for the tile urls
+test('Test construction', async () => {
   enableSziTileSource(OpenSeadragon);
 
   const sziTileSource = await OpenSeadragon.SziTileSource.createSziTileSource(
