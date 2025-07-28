@@ -1,10 +1,10 @@
 # szi-tile-source
 
-An [OpenSeadragon](https://openseadragon.github.io/) (OSD) TileSource for
-[SZI](https://github.com/smartinmedia/SZI-Format) files, enabling loading of SZI files into
-OpenSeadragon from any static webserver that supports
-[Range requests](https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/Range_requests),
-including S3-like services.
+An [OpenSeadragon](https://openseadragon.github.io/) (OSD) TileSource for remotely hosted
+[SZI](https://github.com/smartinmedia/SZI-Format) files, SziTileSource enables the loading of SZI
+files into OpenSeadragon from any static webserver that supports
+[Range requests](https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/Range_requests) and
+returns a valid `content-length` header when responding to HEAD requests.
 
 ## Motivation
 
@@ -16,7 +16,7 @@ efficient for serving up large images, but the potentially huge number of files 
 moving or deleting DZI objects can be tedious, slow, and expensive in environments where cheap bulk
 operations aren't available. 
 
-To counter this problem [Smart In Media](https://www.smartinmedia.com/) came up with the
+To help solve this problem [Smart In Media](https://www.smartinmedia.com/) came up with the
 [SZI](https://github.com/smartinmedia/SZI-Format) format, which wraps the DZI file structure up in a
 single, uncompressed ZIP file. This choice of format obviously makes moving the tile images around a
 lot easier, but it also allows users to access each individual tile image by looking up its location
@@ -26,7 +26,7 @@ the file.
 Unfortunately, reading the Central Directory from the file is a slightly involved process ([see
 below](#fetching-the-central-directory)), and is impractical to do on every tile request.
 The intent of the authors of the SZI spec was that any system serving up images from remotely stored
-SZIs would first generate a cacheable map file of the SZI file before serving files, to enable rapid
+SZIs would generate a cacheable map file of the SZI file before serving files to enable rapid
 look up of the image tile locations. However, this precludes the use of simple static storage
 systems to serve up SZI files unless you pre-process all the files to generate these maps and store
 them alongside the files themselves.
@@ -38,15 +38,15 @@ systems by transparently caching the Central Directory on the client side instea
 
 ### Installation and loading
 
-The library currently isn't distributed anywhere, this will hopefully change soon! For now, you
-can grab the one or the other of the files in the `dist` folder, which you can then copy into your
-own project. We build both ES and UMD modules, called `szi-tile-source.js` and
-`szi-tile-source.umd.cjs` respectively.
+The library currently isn't distributed on npm, this will hopefully change soon! For now, you can
+directly download either the latest ES ([szi-tile-source.js](./dist/szi-tile-source.js)) or UMD
+module ([szi-tile-source.umd.cjs](./dist/szi-tile-source.umd.cjs) from the [dist](./dist) folder,
+and copy them into your own project.
 
 #### ES module
 
-To make sure this loads correctly, as well as importing it you need to call
-`enableSziTileSource` before first use. This creates the `SziTileSource` class as an extension of
+To make sure this loads correctly, you need to call `enableSziTileSource` after importing the
+module but before using the TileSource. This creates the `SziTileSource` class as an extension of
 `OpenSeadragon.DziTileSource` and places it in the `OpenSeadragon` namespace.
 
 If you are using it inline, this will look something like this (with `dist` being replaced by the
@@ -62,7 +62,7 @@ location of the module file in your own project):
 
 ```
 
-Alternatively, if you are using it an ES module, just the following is needed:
+Alternatively, if you are using it an ES module, the following should work:
 
 ```js
 
@@ -75,7 +75,7 @@ Alternatively, if you are using it an ES module, just the following is needed:
 #### UMD module
 
 This should automatically load the `SziTileSource` into the OSD namespace on execution, so you only
-need  to do the following (with `dist` being replaced by the location of the file in your own 
+need to do the following (with `dist` being replaced by the location of the file in your own
 project):
 
 ```html
@@ -87,8 +87,9 @@ project):
 ### Creating a TileSource
 
 Unlike the TileSources that are bundled up with OpenSeadragon, the `SziTileSource` won't be 
-automatically created by simply setting the URL of the viewer to point at a file ending in `.szi`.
-Instead, you have to explicitly create it by calling the static, asynchronous `createSziTileSource`
+automatically created by simply setting the URL of the viewer to point at a file ending in `.szi`,
+and there is no way of directly specifying the OSD settings to force it to be selected. Instead, you
+have to explicitly create it by calling the static, asynchronous `createSziTileSource`
 constructor, and then pass the resulting object into the viewer's constructor, like so:
 
 ```html
@@ -119,7 +120,8 @@ Instead, it supports a simple `fetchOptions` parameter in its static constructor
 specify `headers`, `mode`, and `credentials` properties that will be passed straight through to the
 call to `fetch` - see the 
 [Fetch API Mozilla web docs](https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API/Using_Fetch)
-for details of how these work, as well as the section on [server requirements below](#the-server)
+for details of how these work, though note that setting `mode` to `no-cors` is not supported -
+[see server requirements below](#the-server) for an explanation of why.
 
 ### Requirements and Limitations
 
@@ -135,8 +137,8 @@ pyramid, in a top level directory with the same name as the .dzi file, minus its
 [format description](https://github.com/smartinmedia/SZI-Format/blob/master/SZI%20format%20description%20-%202018-11-24.pdf)
 for details).
 
-However, there are few further restrictions, all of which are unlikely to cause trouble in practice,
-but it's worth noting them in case your requirements are unusual. The SZI file must be:
+There are few further restrictions, all of which are unlikely to cause trouble in practice,
+but worth noting in case your requirements are unusual. These are that the SZI file must be:
 
 * contained on a single disk - technically a single logical ZIP file can be split up and stored across
   multiple physical disks, but this is very unlikely to be done nowadays
@@ -155,15 +157,15 @@ the TileSource is being used
 
 Most modern services and servers support the first two requirements, getting the third right is your
 responsibility! Note that you *cannot* specify the `no-cors` mode in the `fetchOptions`, as
-compliant browsers will not send Range headers to the server when that is set, resulting in the
-whole SZI file being sent back to the browser.
+compliant browsers will not send Range headers to the server when that is set, breaking the
+fundamental mechanism that this library depends on!
 
 ## How it works
 
 The basic idea is simple. By setting the Range header on GET requests, we can fetch subsections of
 the SZI file, rather than hauling down the whole thing. When creating the `SziTileSource`, we use
 this technique to fetch the SZI's Central Directory, processing it to create a contents table that
-contains the start and end locations of all the files contained within the SZI. We then use this
+contains the start and end locations of all the files contained within the SZI. We then use the
 contents table together with the same ranged requests technique to a) fetch the body of the .dzi
 file and configure the parent `DziTileSource` and b) fetch the image tiles when requested by the OSD
 viewer post-configuration.
@@ -272,7 +274,7 @@ load it is impractical!
 
 Once we've read the Central Directory we know roughly where the individual file bodies live,
 but not precisely: each chunk of file data starts with a Local Header containing various bits of
-metadata, and it's the start location of this header that the Central Directory headers contain.
+metadata, and it's the start location of this header that the Central Directory Headers contain.
 Unfortunately this is not necessarily the same data as that Central Directory Header: the values can
 be different, and more importantly the *length* of the header can vary from that in the Central
 Directory. So to reliably read in the body of the file, we need to perform the following steps:
@@ -283,7 +285,7 @@ Directory. So to reliably read in the body of the file, we need to perform the f
 3. Read the body of the file
 
 We then either parse the body as XML, in the case of the .dzi file, or pass it back to OSD in the
-form of a Blob if it's an image tile.
+form of a Blob, in the case of image tiles.
 
 ### Everything else
 
@@ -311,13 +313,12 @@ Once you've done this, you can just run the dev server:
 And you should then be able to see a lovely set of DZI and SZI zoomable images of Mix, my cat, if
 you go to [http://localhost:5173](http://localhost:5173).
 
-You can also run the test in `src/main.test.js` that tests the basic business of extracting the file
-table of contents from an SZI tiled image of Mix. Either run
+To run the tests, just execute
 
 `pnpm test`
 
-or by using your IDE. The two tests in main.test.js currently rely on the dev server running
-locally, everything else should run without dependencies.
+The two tests in `main.test.js` currently rely on the dev server running locally, everything else
+should run without dependencies.
 
 ### Building for distribution
 
@@ -329,7 +330,13 @@ and vite will create them in the `dist` folder.
 
 ## Acknowledgments
 
-Need to appropriately acknowledge: GeoTIFF for inspiration, Tom for doing the explorer work, the
-other chap whose work Tom built on!
+The code for fetching the size of the SZI file, doing ranged requests against it, and reading the
+Central Directory was heavily inspired by the
+[szi_explorer](https://github.com/infovore/szi_explorer), which in turn built on earlier work by
+[Pol Cámara](https://github.com/PolCPP).
+
+The overall shape of the `SziTileSource` itself was inspired by the
+[GeoTIFFTileSource](https://github.com/pearcetm/GeoTIFFTileSource) library, in particular the use of
+a factory constructor to handle the relatively heavyweight initialisation.
 
 
