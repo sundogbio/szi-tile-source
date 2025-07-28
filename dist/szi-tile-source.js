@@ -307,7 +307,9 @@ class w {
 const Z = (o) => {
   class t extends o.DziTileSource {
     /**
-     * Create an SZI tile source for use with OpenSeadragon.
+     * Create an SZI tile source for use with OpenSeadragon. This static factory constructor should be used
+     * instead of the standard Construct, as the majority of the configuration of the image source happens
+     * here asynchronously.
      *
      * @param {string} url location of the SZI file we want to read
      * @param fetchOptions options to use when making HTTP requests to fetch parts of the file
@@ -328,12 +330,20 @@ const Z = (o) => {
       const i = n.dziFilename(), r = await n.fetchFileBody(i), a = new TextDecoder().decode(r), s = o.parseXml(a);
       return o.DziTileSource.prototype.configure(s, i, "");
     }
+    /**
+     * Do not call this directly, for internal use only!
+     *
+     * @param remoteSziReader
+     * @param options
+     */
     constructor(n, i) {
       super(i), this.remoteSziReader = n;
     }
     /**
-     * Download tile data. This is a cut down implementation of the XML-specific path of TileSource.Download
-     * that instead of calling makeAjaxRequest, uses the remoteSziFileReader instead.
+     * Download tile data. Intended for use by OSD, not end users!
+     *
+     * This is a cut down implementation of the XML-specific path of TileSource.Download
+     * that instead of calling makeAjaxRequest uses the remoteSziFileReader.
      *
      * Note that this ignores all the Ajax options as the remoteSziReader uses the fetchOptions supplied in
      * the createSziTileSourceInstead. Also note that only the documented parts of context are used below.
@@ -364,8 +374,8 @@ const Z = (o) => {
       );
     };
     /**
-     * Provide means of aborting the execution.
-     * Note that if you override this function, you should override also downloadTileStart().
+     * Provide means of aborting the execution. Intended for use by OSD, not end users!
+     *
      * @param {ImageJob} context job, the same object as with downloadTileStart(..)
      * @param {*} [context.userData] - Empty object to attach (and mainly read) your own data.
      */
