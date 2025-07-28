@@ -316,9 +316,8 @@ table of contents from an SZI tiled image of Mix. Either run
 
 `pnpm test`
 
-or by using your IDE. It's not much of test - it's mostly there so I can hand debug my code as I go. 
-I will build out something better once I've got a pinch more abstraction and a more tractable test
-data file.
+or by using your IDE. The two tests in main.test.js currently rely on the dev server running
+locally, everything else should run without dependencies.
 
 ### Building for distribution
 
