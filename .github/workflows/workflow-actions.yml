@@ -1,0 +1,52 @@
+name: Build release from version tag
+
+on:
+  push:
+    # Sequence of patterns matched against refs/tags
+    tags:
+      - 'v*' # Push events to matching v*, i.e. v1.0, v20.15.10
+
+# GITHUB_TOKEN needs write permission
+permissions:
+  contents: write
+
+env:
+  RELEASE_FILENAME: szi-tile-source-${{github.ref_name}}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'pnpm'
+      - name: Install dependencies
+        run: pnpm install
+      - name: Build library release
+        run: pnpm run build
+      - name:
+        run: |
+          pushd dist
+          cp szi-tile-source.js ${{env.RELEASE_FILENAME}}.js
+          cp szi-tile-source.umd.cjs ${{env.RELEASE_FILENAME}}.umd.cjs
+          popd
+      - name: Release
+        id: create_release
+        uses: softprops/action-gh-release@v2
+        if: github.ref_type == 'tag'
+        with:
+          files: |
+            dist/${{env.RELEASE_FILENAME}}.js
+            dist/${{env.RELEASE_FILENAME}}.umd.cjs
+          name: ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
