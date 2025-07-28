@@ -1,7 +1,7 @@
 {
   "name": "szi-tile-source",
   "version": "0.0.1",
-  "description": "",
+  "description": "An OpenSeadragon TileSource for remotely hosted SZI files",
   "type": "module",
   "files": [
     "dist"
