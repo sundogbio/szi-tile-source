@@ -1,6 +1,6 @@
 # szi-tile-source
 
-An [OpenSeadragon](https://openseadragon.github.io/) (OSD) TileSource for remotely hosted
+An [OpenSeadragon](https://openseadragon.github.io/) ("OSD") TileSource for remotely hosted
 [SZI](https://github.com/smartinmedia/SZI-Format) files, SziTileSource enables the loading of SZI
 files into OpenSeadragon from any static webserver that supports
 [Range requests](https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/Range_requests) and
@@ -38,14 +38,15 @@ systems by transparently caching the Central Directory on the client side instea
 
 ### Installation and loading
 
-The library currently isn't distributed on npm, this will hopefully change soon! For now, you can
-directly download either the latest ES ([szi-tile-source.js](./dist/szi-tile-source.js)) or UMD
-module ([szi-tile-source.umd.cjs](./dist/szi-tile-source.umd.cjs)) from the [dist](./dist) folder,
-and copy them into your own project.
+Releases of the library are
+[published via Github](https://github.com/sundogbio/szi-tile-source/releases); it is published in
+both ES and UMD module format.
+
+Alternatively, you can [build the library yourself](#building-for-distribution).
 
 #### ES module
 
-To make sure this loads correctly, you need to call `enableSziTileSource` after importing the
+To make sure this loads correctly, call `enableSziTileSource` after importing the
 module but before using the TileSource. This creates the `SziTileSource` class as an extension of
 `OpenSeadragon.DziTileSource` and places it in the `OpenSeadragon` namespace.
 
@@ -83,10 +84,10 @@ project):
 ### Creating a TileSource
 
 Unlike the TileSources that are bundled up with OpenSeadragon, the `SziTileSource` won't be
-automatically created by simply setting the URL of the viewer to point at a file ending in `.szi`,
-and there is no way of directly specifying the OSD settings to force it to be selected. Instead, you
-have to explicitly create it by calling the static, asynchronous `createSziTileSource`
-constructor, and then pass the resulting object into the viewer's constructor, like so:
+automatically created by simply setting the URL of the viewer to point at a file ending in `.szi`
+(and there is no way of directly specifying the OSD settings to force it to be selected). Instead,
+you must explicitly create it by calling the static, asynchronous `createSziTileSource`
+constructor, and then pass the resulting object into the viewer's constructor:
 
 ```html
 <div id="osd-szi-webp" class="osd"></div>
@@ -106,15 +107,15 @@ The only required argument to the constructor is the URL of the file.
 
 ### Options
 
-All file downloads are done using the Fetch API, so the SziTileSource completely ignores any of the
+All file downloads are performed with the Fetch API, so the SziTileSource completely ignores any of the
 OSD options to do with Ajax file download, including: `loadTilesWithAjax`, `ajaxHeaders`,
 `ajaxWithCredentials`, and `crossOriginPolicy`.
 
 Instead, it supports a simple `fetchOptions` parameter in its static constructor, where you can
 specify `headers`, `mode`, and `credentials` properties that will be passed straight through to the
-call to `fetch` - see the
+call to `fetch`. See the
 [Fetch API Mozilla web docs](https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API/Using_Fetch)
-for details of how these work, though note that setting `mode` to `no-cors` is not supported -
+for furhter details on how these work, though note that setting `mode` to `no-cors` is not supported -
 [see server requirements below](#the-server) for an explanation of why.
 
 ### Requirements and Limitations
@@ -126,7 +127,7 @@ SziTileSource has been written to work with version 5.x.x of OSD, and tested aga
 
 #### The file
 
-The file being read must be a valid SZI file, that is an uncompressed ZIP file containing a DZI file
+The file being read **must** be a valid SZI file: that is, an uncompressed ZIP file containing a DZI file
 pyramid, in a top level directory with the same name as the .dzi file, minus its extension (see the
 [format description](https://github.com/smartinmedia/SZI-Format/blob/master/SZI%20format%20description%20-%202018-11-24.pdf)
 for details).
@@ -142,21 +143,23 @@ but worth noting in case your requirements are unusual. These are that the SZI f
 
 #### The server
 
-The server where the file resides must:
+The server where the file resides **must**:
 
 - Support the `Range` header on GET requests
 - Return the `content-length` header when responding to HEAD requests
 - Either have CORS correctly configured, or fulfill the same origin restrictions for the page where
   the TileSource is being used
 
-Most modern services and servers support the first two requirements, getting the third right is your
-responsibility! Note that you _cannot_ specify the `no-cors` mode in the `fetchOptions`, as
+Most modern services and servers support the first two requirements; getting the third right is your
+responsibility!
+
+Note that you _cannot_ specify the `no-cors` mode in the `fetchOptions`, as
 compliant browsers will not send Range headers to the server when that is set, breaking the
-fundamental mechanism that this library depends on!
+fundamental mechanism that this library depends on.
 
 ## How it works
 
-The basic idea is simple. By setting the Range header on GET requests, we can fetch subsections of
+By setting the Range header on GET requests, we can fetch subsections of
 the SZI file, rather than hauling down the whole thing. When creating the `SziTileSource`, we use
 this technique to fetch the SZI's Central Directory, processing it to create a contents table that
 contains the start and end locations of all the files contained within the SZI. We then use the
@@ -164,7 +167,8 @@ contents table together with the same ranged requests technique to a) fetch the 
 file and configure the parent `DziTileSource` and b) fetch the image tiles when requested by the OSD
 viewer post-configuration.
 
-In practice, the implementation details turn out to be a little more complex.
+While the basic idea is simple, in practice, the implementation details turn out to be a little more
+complex.
 
 ### Fetching the Central Directory
 
@@ -296,47 +300,53 @@ To begin with, make sure you have
 [pnpm](https://pnpm.io/installation) and
 [vite](https://vite.dev/guide/) installed.
 
-Then, cd into this directory, and install the dependencies:
+Then, from this directory, install the dependencies:
 
 `pnpm install`
 
-Once you've done this, you can just run the dev server:
+You can then run the dev server to test your installation:
 
 `pnpm dev`
 
-And you should then be able to see a lovely set of DZI and SZI zoomable images of Mix, my cat, if
-you go to [http://localhost:5173](http://localhost:5173).
+You should then be able to see a lovely set of DZI and SZI zoomable images of Mix,
+the author's cat, at [http://localhost:5173](http://localhost:5173).
 
-To run the tests, just execute
+The library comes with a test suite, which you can run with:
 
 `pnpm test`
 
-The two tests in `main.test.js` currently rely on the dev server running locally, everything else
-should run without dependencies.
+The two tests in `main.test.js` currently rely on the dev server running locally. The remaining tests
+run without dependencies.
 
 ### Building for distribution
 
-To make both ES and UMD files for distribution, just run
+To make both ES and UMD files for distribution:
 
 `pnpm build`
 
-and vite will create them in the `dist` folder.
+will output build files to the `dist` folder
 
 ## Releasing the library
 
-Trigger a release build by tagging the state of the branch as anything beginning with the character `v`. Upon push to Github, CI will build the library. Eg:
+Trigger a release build by tagging the state of the branch as anything beginning with the character `v`.
+Upon a push to Github, CI will build the library. Eg:
 
 ```bash
 git tag v0.1.0
 git push origin --tags
 ```
 
-Release builds are then available at [github.com/sundogbio/szi-tile-source/releases](https://github.com/sundogbio/szi-tile-source/releases).
+Release builds are then available at
+[github.com/sundogbio/szi-tile-source/releases](https://github.com/sundogbio/szi-tile-source/releases).
+
+## License
+
+`szi-tile-source` is licensed under MIT license. For details, see the [LICENSE.txt](https://github.com/sundogbio/szi-tile-source/blob/main/LICENSE.txt)
 
 ## Acknowledgments
 
 The code for fetching the size of the SZI file, doing ranged requests against it, and reading the
-Central Directory was heavily inspired by the
+Central Directory was heavily inspired by Tom Armitage's
 [szi_explorer](https://github.com/infovore/szi_explorer), which in turn built on earlier work by
 [Pol Cámara](https://github.com/PolCPP).
 
