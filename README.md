@@ -125,8 +125,8 @@ for details of how these work, as well as the section on [server requirements be
 
 #### OSD Compatibility
 
-SziTileSource has been written to work with version 5.0.1 of OSD. No other versions are currently
-supported.
+SziTileSource has been written to work with version 5.x.x of OSD, and tested against 5.0.0 and
+5.0.1.
 
 #### The file
 
