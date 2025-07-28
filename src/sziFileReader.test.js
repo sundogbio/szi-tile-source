@@ -1,44 +1,8 @@
-import { open, stat } from 'fs/promises';
 import { SziFileReader } from './sziFileReader.js';
 import { describe, expect, test } from 'vitest';
-import { uint8ArrayFromHex } from './testHelpers.js';
+import { LocalFile, uint8ArrayFromHex } from './testHelpers.js';
 import { LittleEndianDataReader } from './littleEndianDataReader.js';
 import { XMLValidator } from 'fast-xml-parser';
-
-class LocalFile {
-  static create = async (path) => {
-    const stats = await stat(path);
-    return new LocalFile(path, stats.size);
-  };
-
-  constructor(path, size) {
-    this.size = size;
-    this.path = path;
-  }
-
-  fetchRange = async (start, end, abortSignal) => {
-    if (start < 0 || start > this.size) {
-      throw new Error(`Start of fetch range (${start}) out of bounds (0 - ${this.size})!`);
-    }
-
-    if (end < 0 || end > this.size) {
-      throw new Error(`Start of fetch range (${start}) out of bounds (0 - ${this.size})!`);
-    }
-
-    if (start > end) {
-      throw new Error(`Start of fetch range (${start}) greater than end (${end})!`);
-    }
-
-    const fileHandle = await open(this.path);
-    try {
-      const buffer = new Uint8Array(end - start);
-      await fileHandle.read(buffer, { offset: 0, length: end - start, position: start });
-      return buffer.buffer;
-    } finally {
-      fileHandle.close();
-    }
-  };
-}
 
 function checkUint8ArrayIsJpeg(array) {
   expect(array.length).toBeGreaterThanOrEqual(4);
