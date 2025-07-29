@@ -49,6 +49,10 @@ export class RemoteFile {
 
     console.log('returned length: ' + length);
 
+    const array = await response.arrayBuffer();
+
+    console.log('returned buffer length: ' + length);
+
     return parseInt(length, 10);
   };
 
