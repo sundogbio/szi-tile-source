@@ -1,161 +1,168 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-    <meta charset="UTF-8">
-    <title>SZI Tile Source Demo</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/openseadragon/5.0.1/openseadragon.js"></script>
-    <script type="module" src="src/main.js"></script>
-    <script type="module">
-        import {enableSziTileSource} from "./src/main.js";
-        enableSziTileSource(OpenSeadragon);
-    </script>
-    <link rel="stylesheet" href="index.css">
+  <meta charset="UTF-8">
+  <title>SZI Tile Source Demo</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/openseadragon/5.0.1/openseadragon.js"></script>
+  <script type="module" src="src/main.js"></script>
+  <script type="module">
+    import { enableSziTileSource } from "./src/main.js";
+    enableSziTileSource(OpenSeadragon);
+  </script>
+  <link rel="stylesheet" href="index.css">
+
 </head>
+
 <body>
-    <div class="layout">
-        <div class="osd-and-title">
-            <h1>dzi jpeg</h1>
-            <div id="osd-dzi" class="osd"></div>
-            <script type="text/javascript">
+  <div class="layout">
+    <section class="head">
+      <h1>OpenSeadragon SZITileSource demo</h1>
+    </section>
+    <section>
+      <h2>dzi jpeg</h2>
+      <div id="osd-dzi" class="osd"></div>
+      <script type="text/javascript">
 
-                // Explicitly creating the TileSource to prove to myself that I understand how they work!
-                const url = 'examples/unzipped/mixmas.dzi';
-                fetch(url).then(async response => {
-                    const xml = await response.text();
-                    const data = OpenSeadragon.parseXml(xml);
-                    const options = OpenSeadragon.DziTileSource.prototype.configure(data, url, "");
+        // Explicitly creating the TileSource to prove to myself that I understand how they work!
+        const url = 'examples/unzipped/mixmas.dzi';
+        fetch(url).then(async response => {
+          const xml = await response.text();
+          const data = OpenSeadragon.parseXml(xml);
+          const options = OpenSeadragon.DziTileSource.prototype.configure(data, url, "");
 
-                    const viewer = new OpenSeadragon.Viewer({
-                        id: "osd-dzi",
-                        prefixUrl: "https://cdnjs.cloudflare.com/ajax/libs/openseadragon/5.0.1/images/",
-                        tileSources: new OpenSeadragon.DziTileSource(options),
-                        loadTilesWithAjax: true,
-                    });
+          const viewer = new OpenSeadragon.Viewer({
+            id: "osd-dzi",
+            prefixUrl: "https://cdnjs.cloudflare.com/ajax/libs/openseadragon/5.0.1/images/",
+            tileSources: new OpenSeadragon.DziTileSource(options),
+            loadTilesWithAjax: true,
+          });
 
-                })
-            </script>
-        </div>
-        <div class="osd-and-title">
-            <h1>szi jpeg</h1>
-            <div id="osd-szi-jpeg" class="osd"></div>
-            <script type="module">
-                const sziUrl = 'examples/zipped/mixmas-jpeg.szi';
-                OpenSeadragon.SziTileSource.createSziTileSource(
-                    sziUrl,
-                    {
-                        headers:{
-                            "X-bobbins": "what a load of bobbins"
-                        },
-                        mode:"cors",
-                        credentials:"omit"
-                    }).then(async tileSource => {
-                    const viewer = new OpenSeadragon.Viewer({
-                        id: "osd-szi-jpeg",
-                        prefixUrl: "https://cdnjs.cloudflare.com/ajax/libs/openseadragon/5.0.1/images/",
-                        tileSources: [tileSource],
-                    });
+        })
+      </script>
+    </section>
+    <section>
+      <h2>szi jpeg</h2>
+      <div id="osd-szi-jpeg" class="osd"></div>
+      <script type="module">
+        const sziUrl = 'examples/zipped/mixmas-jpeg.szi';
+        OpenSeadragon.SziTileSource.createSziTileSource(
+          sziUrl,
+          {
+            headers: {
+              "X-bobbins": "what a load of bobbins"
+            },
+            mode: "cors",
+            credentials: "omit"
+          }).then(async tileSource => {
+            const viewer = new OpenSeadragon.Viewer({
+              id: "osd-szi-jpeg",
+              prefixUrl: "https://cdnjs.cloudflare.com/ajax/libs/openseadragon/5.0.1/images/",
+              tileSources: [tileSource],
+            });
 
-                })
-            </script>
-        </div>
-        <div class="osd-and-title">
-            <h1>szi jpeg, manually zipped</h1>
-            <div id="osd-szi-jpeg-manually-zipped" class="osd"></div>
-            <script type="module">
-                const sziUrl = 'examples/zipped/mixmas-jpeg-manually-zipped.szi';
-                OpenSeadragon.SziTileSource.createSziTileSource(
-                    sziUrl,
-                    {
-                        headers:{
-                            "X-bobbins": "what a load of bobbins"
-                        },
-                        mode:"cors",
-                        credentials:"omit"
-                    }).then(async tileSource => {
-                    const viewer = new OpenSeadragon.Viewer({
-                        id: "osd-szi-jpeg-manually-zipped",
-                        prefixUrl: "https://cdnjs.cloudflare.com/ajax/libs/openseadragon/5.0.1/images/",
-                        tileSources: [tileSource],
-                    });
+          })
+      </script>
+    </section>
+    <section>
+      <h2>szi jpeg, manually zipped</h2>
+      <div id="osd-szi-jpeg-manually-zipped" class="osd"></div>
+      <script type="module">
+        const sziUrl = 'examples/zipped/mixmas-jpeg-manually-zipped.szi';
+        OpenSeadragon.SziTileSource.createSziTileSource(
+          sziUrl,
+          {
+            headers: {
+              "X-bobbins": "what a load of bobbins"
+            },
+            mode: "cors",
+            credentials: "omit"
+          }).then(async tileSource => {
+            const viewer = new OpenSeadragon.Viewer({
+              id: "osd-szi-jpeg-manually-zipped",
+              prefixUrl: "https://cdnjs.cloudflare.com/ajax/libs/openseadragon/5.0.1/images/",
+              tileSources: [tileSource],
+            });
 
-                })
-            </script>
-        </div>
-        <div class="osd-and-title">
-            <h1>szi jpeg, forced to be zip64</h1>
-            <div id="osd-szi-jpeg-force-zip64" class="osd"></div>
-            <script type="module">
-                const sziUrl = 'examples/zipped/mixmas-jpeg-force-zip64.szi';
-                OpenSeadragon.SziTileSource.createSziTileSource(sziUrl).then(async tileSource => {
-                    const viewer = new OpenSeadragon.Viewer({
-                        id: "osd-szi-jpeg-force-zip64",
-                        prefixUrl: "https://cdnjs.cloudflare.com/ajax/libs/openseadragon/5.0.1/images/",
-                        tileSources: [tileSource],
-                    });
+          })
+      </script>
+    </section>
+    <section>
+      <h2>szi jpeg, forced to be zip64</h2>
+      <div id="osd-szi-jpeg-force-zip64" class="osd"></div>
+      <script type="module">
+        const sziUrl = 'examples/zipped/mixmas-jpeg-force-zip64.szi';
+        OpenSeadragon.SziTileSource.createSziTileSource(sziUrl).then(async tileSource => {
+          const viewer = new OpenSeadragon.Viewer({
+            id: "osd-szi-jpeg-force-zip64",
+            prefixUrl: "https://cdnjs.cloudflare.com/ajax/libs/openseadragon/5.0.1/images/",
+            tileSources: [tileSource],
+          });
 
-                })
-            </script>
-        </div>
-        <div class="osd-and-title">
-            <h1>szi jpeg, with safe comment</h1>
-            <div id="osd-szi-jpeg-with-comment" class="osd"></div>
-            <script type="module">
-                const sziUrl = 'examples/zipped/mixmas-jpeg-with-comment.szi';
-                OpenSeadragon.SziTileSource.createSziTileSource(sziUrl).then(async tileSource => {
-                    const viewer = new OpenSeadragon.Viewer({
-                        id: "osd-szi-jpeg-with-comment",
-                        prefixUrl: "https://cdnjs.cloudflare.com/ajax/libs/openseadragon/5.0.1/images/",
-                        tileSources: [tileSource],
-                    });
+        })
+      </script>
+    </section>
+    <section>
+      <h2>szi jpeg, with safe comment</h2>
+      <div id="osd-szi-jpeg-with-comment" class="osd"></div>
+      <script type="module">
+        const sziUrl = 'examples/zipped/mixmas-jpeg-with-comment.szi';
+        OpenSeadragon.SziTileSource.createSziTileSource(sziUrl).then(async tileSource => {
+          const viewer = new OpenSeadragon.Viewer({
+            id: "osd-szi-jpeg-with-comment",
+            prefixUrl: "https://cdnjs.cloudflare.com/ajax/libs/openseadragon/5.0.1/images/",
+            tileSources: [tileSource],
+          });
 
-                })
-            </script>
-        </div>
-        <div class="osd-and-title">
-            <h1>szi jpeg, with bad comment</h1>
-            <div id="osd-szi-jpeg-with-bad-comment" class="osd"></div>
-            <script type="module">
-                const sziUrl = 'examples/zipped/mixmas-jpeg-with-bad-comment.szi';
-                OpenSeadragon.SziTileSource.createSziTileSource(sziUrl).then(async tileSource => {
-                    const viewer = new OpenSeadragon.Viewer({
-                        id: "osd-szi-jpeg-with-bad-comment",
-                        prefixUrl: "https://cdnjs.cloudflare.com/ajax/libs/openseadragon/5.0.1/images/",
-                        tileSources: [tileSource],
-                    });
+        })
+      </script>
+    </section>
+    <section>
+      <h2>szi jpeg, with bad comment</h2>
+      <div id="osd-szi-jpeg-with-bad-comment" class="osd"></div>
+      <script type="module">
+        const sziUrl = 'examples/zipped/mixmas-jpeg-with-bad-comment.szi';
+        OpenSeadragon.SziTileSource.createSziTileSource(sziUrl).then(async tileSource => {
+          const viewer = new OpenSeadragon.Viewer({
+            id: "osd-szi-jpeg-with-bad-comment",
+            prefixUrl: "https://cdnjs.cloudflare.com/ajax/libs/openseadragon/5.0.1/images/",
+            tileSources: [tileSource],
+          });
 
-                })
-            </script>
-        </div>
-        <div class="osd-and-title">
-            <h1>szi webp</h1>
-            <div id="osd-szi-webp" class="osd"></div>
-            <script type="module">
-                const sziUrl = 'examples/zipped/mixmas-webp.szi';
-                OpenSeadragon.SziTileSource.createSziTileSource(sziUrl).then(async tileSource => {
-                    const viewer = new OpenSeadragon.Viewer({
-                        id: "osd-szi-webp",
-                        prefixUrl: "https://cdnjs.cloudflare.com/ajax/libs/openseadragon/5.0.1/images/",
-                        tileSources: [tileSource],
-                    });
+        })
+      </script>
+    </section>
+    <section>
+      <h2>szi webp</h2>
+      <div id="osd-szi-webp" class="osd"></div>
+      <script type="module">
+        const sziUrl = 'examples/zipped/mixmas-webp.szi';
+        OpenSeadragon.SziTileSource.createSziTileSource(sziUrl).then(async tileSource => {
+          const viewer = new OpenSeadragon.Viewer({
+            id: "osd-szi-webp",
+            prefixUrl: "https://cdnjs.cloudflare.com/ajax/libs/openseadragon/5.0.1/images/",
+            tileSources: [tileSource],
+          });
 
-                })
-            </script>
-        </div>
-        <div class="osd-and-title">
-            <h1>szi png</h1>
-            <div id="osd-szi-png" class="osd"></div>
-            <script type="module">
-                const sziUrl = 'examples/zipped/mixmas-png.szi';
-                OpenSeadragon.SziTileSource.createSziTileSource(sziUrl).then(async tileSource => {
-                    const viewer = new OpenSeadragon.Viewer({
-                        id: "osd-szi-png",
-                        prefixUrl: "https://cdnjs.cloudflare.com/ajax/libs/openseadragon/5.0.1/images/",
-                        tileSources: [tileSource],
-                    });
+        })
+      </script>
+    </section>
+    <section>
+      <h2>szi png</h2>
+      <div id="osd-szi-png" class="osd"></div>
+      <script type="module">
+        const sziUrl = 'examples/zipped/mixmas-png.szi';
+        OpenSeadragon.SziTileSource.createSziTileSource(sziUrl).then(async tileSource => {
+          const viewer = new OpenSeadragon.Viewer({
+            id: "osd-szi-png",
+            prefixUrl: "https://cdnjs.cloudflare.com/ajax/libs/openseadragon/5.0.1/images/",
+            tileSources: [tileSource],
+          });
 
-                })
-            </script>
-        </div>
-    </div>
+        })
+      </script>
+    </section>
+  </div>
 </body>
+
 </html>
