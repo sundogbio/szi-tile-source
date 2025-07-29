@@ -1,6 +1,14 @@
 name: Build and deploy Github Pages site.
 
-on: [push]
+on:
+  push:
+    branches:
+      - main
+
+# GITHUB_TOKEN needs write permission
+permissions:
+  pages: write
+  id-token: write
 
 jobs:
   build:
