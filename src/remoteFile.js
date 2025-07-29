@@ -29,9 +29,10 @@ export class RemoteFile {
    * @returns {Promise<number>}
    */
   static fetchFileSize = async (url, fetchOptions) => {
+    const headers = fetchOptions.headers ? { ...fetchOptions.headers, Range: 'bytes=0-255' } : { Range: 'bytes=0-255' };
+
     const response = await fetch(url, {
-      method: 'HEAD',
-      headers: fetchOptions.headers,
+      headers: headers,
       mode: fetchOptions.mode,
       credentials: fetchOptions.credentials,
     });
@@ -40,12 +41,15 @@ export class RemoteFile {
       throw new Error(`Could not fetch size of ${url}, response status for HEAD request: ${response.status}`);
     }
 
-    const contentLength = response.headers.get('content-length');
-    if (!contentLength) {
-      throw new Error(`Could not fetch size of ${url}, no content-length in response headers`);
+    const contentRange = response.headers.get('Content-Range');
+    const [match, start, end, length] = contentRange.match(/bytes (\d+)\-(\d+)\/(\d+)/);
+    if (!match || !length) {
+      throw new Error(`Could not fetch size of ${url}, range header didn't contain the length of the file`);
     }
 
-    return parseInt(contentLength, 10);
+    console.log('returned length: ' + length);
+
+    return parseInt(length, 10);
   };
 
   constructor(url, size, fetchOptions) {

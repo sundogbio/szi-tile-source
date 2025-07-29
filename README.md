@@ -115,8 +115,13 @@ Instead, it supports a simple `fetchOptions` parameter in its static constructor
 specify `headers`, `mode`, and `credentials` properties that will be passed straight through to the
 call to `fetch`. See the
 [Fetch API Mozilla web docs](https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API/Using_Fetch)
-for furhter details on how these work, though note that setting `mode` to `no-cors` is not supported -
+for further details on how these work, though note that:
+* setting `mode` to `no-cors` is not supported -
 [see server requirements below](#the-server) for an explanation of why.
+* the value of the `Accept-Encoding` header will be overridden when making the HEAD request to get
+  the size of the SZI file
+* the value of the `Range` header will be overridden when making GET requests to fetch data from the
+  SZI file
 
 ### Requirements and Limitations
 
