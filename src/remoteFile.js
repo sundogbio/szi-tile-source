@@ -29,7 +29,7 @@ export class RemoteFile {
    * @returns {Promise<number>}
    */
   static fetchFileSize = async (url, fetchOptions) => {
-    const headers = fetchOptions.headers ? { ...fetchOptions.headers, Range: 'bytes=0-255' } : { Range: 'bytes=0-255' };
+    const headers = fetchOptions.headers ? { ...fetchOptions.headers, Range: 'bytes=-255' } : { Range: 'bytes=-255' };
 
     const response = await fetch(url, {
       headers: headers,
