@@ -3,7 +3,6 @@ import { resolve } from 'node:path';
 import { defineConfig } from 'vite';
 
 const packageJson = JSON.parse(readFileSync('./package.json', 'utf8'));
-console.log(packageJson.version);
 
 export default defineConfig(({ command }) => ({
   // Otherwise the public directory ends up in dist. There is probably a better way
