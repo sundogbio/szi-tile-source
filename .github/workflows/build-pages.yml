@@ -3,7 +3,7 @@ name: Build and deploy Github Pages site.
 on:
   push:
     branches:
-      - main
+      - experimenting-with-ranges-to-get-length
 
 # GITHUB_TOKEN needs write permission
 permissions:
