@@ -10,6 +10,11 @@
     import { enableSziTileSource } from "./src/main.js";
     enableSziTileSource(OpenSeadragon);
   </script>
+  <script type="module">
+    document.addEventListener("DOMContentLoaded", () => {
+      document.getElementById('version').textContent = `Version: ${__VERSION__}`
+    })
+  </script>
   <link rel="stylesheet" href="index.css">
 
 </head>
@@ -18,6 +23,7 @@
   <div class="layout">
     <section class="head">
       <h1>OpenSeadragon SZITileSource demo</h1>
+      <div id="version"></div>
     </section>
     <section>
       <h2>dzi jpeg</h2>
