@@ -1,12 +1,24 @@
+body {
+  font-family: 'Helvetica', 'Arial', sans-serif;
+}
+
 .layout {
   display: flex;
   flex-direction: row;
   flex-wrap: wrap;
 }
 
-.osd-and-title {
+section {
   max-width: 400px;
   margin: 16px;
+
+  &.head {
+    max-width: 100%;
+  }
+
+  h1 {
+    font-size: 2rem;
+  }
 }
 
 .osd {
