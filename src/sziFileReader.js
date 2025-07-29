@@ -458,7 +458,7 @@ export class SziFileReader {
     let dziFilename = '';
     for (const filename of this.contents.keys()) {
       // i.e. "something/something.dzi"
-      if (filename.match(/^([^\/]*)\/\1\.dzi$/)) {
+      if (filename.match(/^(.*)\.dzi$/)) {
         if (dziFilename) {
           throw new Error('Multiple .dzi files found in .szi!');
         } else {

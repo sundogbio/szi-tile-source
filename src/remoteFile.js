@@ -29,7 +29,7 @@ export class RemoteFile {
    * @returns {Promise<number>}
    */
   static fetchFileSize = async (url, fetchOptions) => {
-    const headers = fetchOptions.headers ? { ...fetchOptions.headers, Range: 'bytes=-255' } : { Range: 'bytes=-255' };
+    const headers = fetchOptions.headers ? { ...fetchOptions.headers, Range: 'bytes=0-255' } : { Range: 'bytes=0-255' };
 
     const response = await fetch(url, {
       headers: headers,
@@ -46,12 +46,6 @@ export class RemoteFile {
     if (!match || !length) {
       throw new Error(`Could not fetch size of ${url}, range header didn't contain the length of the file`);
     }
-
-    console.log('returned length: ' + length);
-
-    const array = await response.arrayBuffer();
-
-    console.log('returned buffer length: ' + array.byteLength);
 
     return parseInt(length, 10);
   };
