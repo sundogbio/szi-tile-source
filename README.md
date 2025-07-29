@@ -333,7 +333,7 @@ Upon a push to Github, CI will build the library. Eg:
 
 ```bash
 git tag v0.1.0
-git push origin --tags
+git push origin v0.1.0
 ```
 
 Release builds are then available at
