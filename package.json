@@ -28,6 +28,7 @@
   "devDependencies": {
     "fast-xml-parser": "^5.2.5",
     "jsdom": "^26.1.0",
+    "msw": "^2.10.4",
     "openseadragon": "^5.0.1",
     "prettier": "^3.6.2",
     "vite": "^7.0.4",

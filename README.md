@@ -315,9 +315,6 @@ The library comes with a test suite, which you can run with:
 
 `pnpm test`
 
-The two tests in `main.test.js` currently rely on the dev server running locally. The remaining tests
-run without dependencies.
-
 ### Building for distribution
 
 To make both ES and UMD files for distribution:

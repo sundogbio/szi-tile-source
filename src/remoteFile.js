@@ -93,7 +93,7 @@ export class RemoteFile {
     });
 
     if (!response.ok) {
-      throw new Error(`Couldn't fetch range ${start}:${end} of ${url} of ${response.status}`);
+      throw new Error(`Couldn't fetch range ${start}:${end} of ${this.url} status: ${response.status}`);
     }
 
     return await response.arrayBuffer();
