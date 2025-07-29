@@ -1,3 +1,7 @@
+body {
+  font-family: 'Helvetica', 'Arial', sans-serif;
+}
+
 .layout {
   display: flex;
   flex-direction: row;
