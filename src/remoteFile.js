@@ -18,8 +18,8 @@ export class RemoteFile {
   };
 
   /**
-   * Attempt to fetch the size of the remote file by doing a HEAD request and reading
-   * the content-length header
+   * Attempt to fetch the size of the remote file by doing a minimal ranged GET request and reading
+   * the Content-Range header
    *
    * @param {string} url
    * @param fetchOptions options to apply to all fetches,
@@ -29,23 +29,32 @@ export class RemoteFile {
    * @returns {Promise<number>}
    */
   static fetchFileSize = async (url, fetchOptions) => {
+    const headers = fetchOptions.headers ? { ...fetchOptions.headers, Range: 'bytes=0-255' } : { Range: 'bytes=0-255' };
+
     const response = await fetch(url, {
-      method: 'HEAD',
-      headers: fetchOptions.headers,
+      headers: headers,
       mode: fetchOptions.mode,
       credentials: fetchOptions.credentials,
     });
 
     if (!response.ok) {
-      throw new Error(`Could not fetch size of ${url}, response status for HEAD request: ${response.status}`);
+      throw new Error(`Could not fetch size of ${url}, response status for request: ${response.status}`);
     }
 
-    const contentLength = response.headers.get('content-length');
-    if (!contentLength) {
-      throw new Error(`Could not fetch size of ${url}, no content-length in response headers`);
+    const contentRange = response.headers.get('Content-Range');
+    if (!contentRange) {
+      throw new Error(
+        `Could not fetch size of ${url}, Content-Range header not included in response. ` +
+          "Check that your server's CORS settings include it in Access-Control-Expose-Headers.",
+      );
     }
 
-    return parseInt(contentLength, 10);
+    const [match, start, end, length] = contentRange.match(/bytes (\d+)\-(\d+)\/(\d+)/);
+    if (!match || !length) {
+      throw new Error(`Could not fetch size of ${url}, Content-Range header didn't contain the length of the file`);
+    }
+
+    return parseInt(length, 10);
   };
 
   constructor(url, size, fetchOptions) {
