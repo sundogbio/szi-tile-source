@@ -12,6 +12,10 @@ section {
   max-width: 400px;
   margin: 16px;
 
+  p {
+    line-height: 1.2;
+  }
+
   &.head {
     max-width: 100%;
   }
