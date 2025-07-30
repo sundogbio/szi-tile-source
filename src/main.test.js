@@ -13,13 +13,6 @@ import { LocalFile } from './testHelpers.js';
 
 // Set up for mocked network request handling with msw
 export const server = setupServer(
-  http.head('http://localhost:5173/examples/zipped/mixmas-jpeg.szi', async ({ request }) => {
-    const localFile = await LocalFile.create('./public/examples/zipped/mixmas-jpeg.szi');
-
-    const response = HttpResponse.text('');
-    response.headers.set('content-length', localFile.size);
-    return response;
-  }),
   http.get('http://localhost:5173/examples/zipped/mixmas-jpeg.szi', async ({ request }) => {
     const localFile = await LocalFile.create('./public/examples/zipped/mixmas-jpeg.szi');
 
@@ -31,7 +24,10 @@ export const server = setupServer(
       const end = parseInt(endStr, 10) + 1; //Range requests are *inclusive*
 
       const body = await localFile.fetchRange(start, end, undefined);
-      return new HttpResponse(body, { status: 206 });
+      return new HttpResponse(body, {
+        status: 206,
+        headers: { 'Content-Range': `bytes ${startStr}-${endStr}/${localFile.size}` },
+      });
     } else {
       return new HttpResponse(undefined, { status: 500 });
     }

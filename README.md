@@ -3,8 +3,8 @@
 An [OpenSeadragon](https://openseadragon.github.io/) ("OSD") TileSource for remotely hosted
 [SZI](https://github.com/smartinmedia/SZI-Format) files, SziTileSource enables the loading of SZI
 files into OpenSeadragon from any static webserver that supports
-[Range requests](https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/Range_requests) and
-returns a valid `content-length` header when responding to HEAD requests.
+[Range requests](https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/Range_requests) by
+returning an uncompressed response that includes a `Content-Range` header.
 
 ## Motivation
 
@@ -146,15 +146,28 @@ but worth noting in case your requirements are unusual. These are that the SZI f
 The server where the file resides **must**:
 
 - Support the `Range` header on GET requests
-- Return the `content-length` header when responding to HEAD requests
-- Either have CORS correctly configured, or fulfill the same origin restrictions for the page where
-  the TileSource is being used
+- Return the `Content-Range` header in its response to ranged requests
 
-Most modern services and servers support the first two requirements; getting the third right is your
-responsibility!
+In addition, if you want to use this library on **Firefox**, the server **must**:
+
+- Not use compression (e.g. gzip) when responding to on ranged requests to the SZI files you wish to
+  display
+
+Finally, if the requests to fetch the file will be **cross-origin**, the server **must**:
+
+- Have CORS correctly configured, including adding the `Content-Range` header to the
+  `Access-Control-Expose-Headers`
+
+Most modern services and servers fulfill the first two requirements; some might not fulfill the
+third by default and need extra configuration, or might not support it at all. The need for such
+configuration might not be obvious when using Chrome, Safari, or Edge for testing. These browsers
+automatically set the `Accept-Encoding` header to `identity` for ranged requests, explicitly
+requesting that the server not compress its responses. Unfortunately, Firefox does not do this,
+hence the need to ensure that the server doesn't default to compressing the SZI files in its
+responses.
 
 Note that you _cannot_ specify the `no-cors` mode in the `fetchOptions`, as
-compliant browsers will not send Range headers to the server when that is set, breaking the
+compliant browsers will not send `Range` headers to the server when that is set, breaking the
 fundamental mechanism that this library depends on.
 
 ## How it works
@@ -204,10 +217,11 @@ the file to read the EOCD.
 
 So for normal zip files we follow this process to find the location of the Central Directory:
 
-1. Find the length of the entire file by making a HEAD request to the server, and grabbing the
-   content-length from the response headers
-2. Do a ranged GET request of the file from (content-length - maximum possible length of the EOCD)
-   to content-length
+1. Find the length of the entire file by making an initial ranged GET request to the server for a
+   small subsection of the file, and grabbing the total length from the Content-Range response
+   header
+2. Do a ranged GET request of the file from (total length - maximum possible length of the EOCD)
+   to total length
 3. Step backwards through the results of that request until we find the start of the EOCD (it begins
    with a magic number)
 4. Read that EOCD in to discover the location of the Central Directory, its length in bytes, and the
@@ -247,10 +261,11 @@ the Central Directory are set to their maximum values in the EOCD.
 These additional structures mean that the process of locating the Central Directory in a Zip64 file
 goes like this:
 
-1. Find the length of the entire file by making a HEAD request to the server, and grabbing the
-   content-length from the response headers
+1. Find the length of the entire file by making an initial ranged GET request to the server for a
+   small subsection of the file, and grabbing the total length from the Content-Range response
+   header
 2. Do a ranged GET request of the file for the maximum possible length of the EOCD + the Zip64 EOCD
-   Locator, ending at the content-length
+   Locator, ending at the total length
 3. Step backwards through the results of that request until we find the star of the EOCD (it begins
    with a magic number)
 4. Read the EOCD in. If the relevant fields are not set to their maximum, continue as per step 4
