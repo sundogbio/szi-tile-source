@@ -458,7 +458,7 @@ export class SziFileReader {
     let dziFilename = '';
     for (const filename of this.contents.keys()) {
       // i.e. "something/something.dzi"
-      if (filename.match(/^([^\/]*)\/\1\.dzi$/)) {
+      if (filename.match(/^(.*)\.dzi$/)) {
         if (dziFilename) {
           throw new Error('Multiple .dzi files found in .szi!');
         } else {
@@ -475,15 +475,12 @@ export class SziFileReader {
   };
 
   /**
-   * Find the top level tiles directory. This should be of the form
-   * <name>/<name>_files, and contain subdirectories containing tiles
-   * for each zoom level
+   * Find the top level tiles directory. For a dzi file at "path/name.dzi" this should be of the form
+   * "path/name_files/" and contain subdirectories containing tiles for each zoom level
    *
    * @returns {string}
    */
   tilesDirectory = () => {
-    const dziFilename = this.dziFilename();
-    const path = dziFilename.split('/')[0];
-    return `${path}/${path}_files/`;
+    return this.dziFilename().replace(/\.dzi$/, '_files/');
   };
 }

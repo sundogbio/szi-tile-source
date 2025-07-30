@@ -37,6 +37,7 @@ describe('Check well formed example files are readable', async () => {
     ['mixmas-png.szi', 'png'],
     ['mixmas-webp.szi', 'webp'],
     ['emoji-eyes-internal-filename-png.szi', 'png'],
+    ['eye-png-no-top-level-folder.szi', 'png'],
   ])('%s is readable', async (filename, type) => {
     const localFile = await LocalFile.create('./public/examples/zipped/' + filename);
     const sziFileReader = await SziFileReader.create(localFile);
