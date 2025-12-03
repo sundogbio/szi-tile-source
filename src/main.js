@@ -78,7 +78,7 @@ export const enableSziTileSource = (OpenSeadragon) => {
       const image = new Image();
       image.onload = function () {
         resetImageHandlers();
-        context.finish(image, context.userData.request, null);
+        context.finish(image, context.userData.request, 'image');
       };
       image.onabort = image.onerror = function () {
         resetImageHandlers();
