@@ -122,8 +122,9 @@ for furhter details on how these work, though note that setting `mode` to `no-co
 
 #### OSD Compatibility
 
-SziTileSource has been written to work with version 5.x.x of OSD, and tested against 5.0.0 and
-5.0.1.
+SziTileSource as originally written to work with version 5.x.x of OSD. It has been tested and tested against 5.0.0 and 5.0.1.
+
+It is also compatible with 6.0.0 - the next forthcoming release - and [its changes to the caching system and data pipeline](https://github.com/openseadragon/openseadragon/discussions/2637)
 
 #### The file
 
