@@ -18,8 +18,8 @@ importers:
         specifier: ^2.10.4
         version: 2.10.4
       openseadragon:
-        specifier: ^5.0.1
-        version: 5.0.1
+        specifier: ^6.0.2
+        version: 6.0.2
       prettier:
         specifier: ^3.6.2
         version: 3.6.2
@@ -623,8 +623,8 @@ packages:
   nwsapi@2.2.20:
     resolution: {integrity: sha512-/ieB+mDe4MrrKMT8z+mQL8klXydZWGR5Dowt4RAGKbJ3kIGEx3X4ljUo+6V73IXtUPWgfOlU5B9MlGxFO5T+cA==}
 
-  openseadragon@5.0.1:
-    resolution: {integrity: sha512-a/hjouW9i3UfWxRADVYN2MyRhXMGnE7x9VVL7/4jXCcDLFyO4UM5o4RStYtqa5BfaHw/wMNAaD2WbxQF8f1pJg==}
+  openseadragon@6.0.2:
+    resolution: {integrity: sha512-WNPPQWp9sHunyzkV9J2yhfxnSfDF9CfBsE6unmkdxh1uTWzFcueMvBPhmuZdY7M1v/ffJ3NdaF3Qq3jogphIbA==}
 
   outvariant@1.4.3:
     resolution: {integrity: sha512-+Sl2UErvtsoajRDKCE5/dBz4DIvHXQQnAxtQTF04OJxY0+DyZXSo5P5Bb7XYWOh81syohlYL24hbDwxedPUJCA==}
@@ -1422,7 +1422,7 @@ snapshots:
 
   nwsapi@2.2.20: {}
 
-  openseadragon@5.0.1: {}
+  openseadragon@6.0.2: {}
 
   outvariant@1.4.3: {}
 
