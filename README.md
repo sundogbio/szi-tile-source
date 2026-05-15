@@ -195,6 +195,14 @@ contents table together with the same ranged requests technique to a) fetch the 
 file and configure the parent `DziTileSource` and b) fetch the image tiles when requested by the OSD
 viewer post-configuration.
 
+For very large SZI files the Central Directory itself can run to many megabytes. Rather than waiting
+for the entire CD to finish downloading before the viewer becomes usable, the response body is
+streamed in and parsed progressively. The `createSziTileSource` factory resolves as soon as the
+`.dzi` entry has been parsed (typically only a few kB into the CD), so that OpenSeadragon can begin
+rendering low-magnification tiles immediately. The remaining entries continue to stream in the
+background; tile fetches for entries that have not yet been parsed transparently await the parser
+reaching them.
+
 While the basic idea is simple, in practice, the implementation details turn out to be a little more
 complex.
 
@@ -292,8 +300,13 @@ goes like this:
    Central Directory, its length in bytes, and its number of entries
 
 To read the CentralDirectory is comparatively easy: we just do a range GET from its start to finish
-and then read in the entries sequentially. Note that these are again variable length, so to get the
-location of the nth file in the ZIP, you have to read the preceding n-1 entries.
+and parse the entries out of the response body as it streams in. The entries are variable
+length, so the location of the nth entry is only known once the preceding n-1 have been read; the
+upside of streaming is that as soon as we have parsed the `.dzi` entry we can resolve the
+`SziTileSource` and start serving any tiles whose entries have already been seen, even while the
+rest of the CD is still downloading. Entries are stored in a map keyed by filename as they arrive,
+and any fetch for an entry that has not yet been parsed registers a waiter that the streaming parser
+resolves when it reaches that entry.
 
 Hopefully this demonstrates why finding the location of each tile from scratch every time we want to
 load it is impractical!
@@ -311,6 +324,12 @@ Directory. So to reliably read in the body of the file, we need to perform the f
    file's header.
 2. Read the header, and discard it
 3. Read the body of the file
+
+When the progressive parser has not yet seen the next entry above the one we want (which is common
+for the very first tile fetches that happen while the CD is still streaming in), we don't have a
+known upper bound to use in step 1. In that case we fall back to a conservative bound derived from
+the maximum possible size of a Local File Header plus the entry's uncompressed body length, so the
+fetch is always well-formed at the cost of occasionally reading a few extra bytes.
 
 We then either parse the body as XML, in the case of the .dzi file, or pass it back to OSD in the
 form of a Blob, in the case of image tiles.

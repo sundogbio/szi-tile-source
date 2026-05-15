@@ -15,6 +15,10 @@ const zip64EocdRecordMagicNumber = 0x06064b50;
 const centralDirectoryHeaderMagicNumber = 0x02014b50;
 const localFileHeaderMagicNumber = 0x04034b50;
 
+// Size of the fixed-length portion of a Central Directory file header,
+// not including the variable filename, extra field, and file comment.
+const fixedCentralDirectoryHeaderSize = 46;
+
 /**
  * Searches backwards in the supplied bytesToSearchIn for the bytesToFind
  *
@@ -222,6 +226,73 @@ function readZip64ExtraFields(reader, length, valuesReadFromNormalFields) {
 }
 
 /**
+ * Read a single Central Directory file header from the supplied reader, advancing
+ * it past the entry.
+ *
+ * @param {LittleEndianDataReader} reader
+ * @param {number} indexForErrors index used in error messages to identify which entry was malformed
+ * @returns {{filename: (string), uncompressedSize: (number), relativeOffsetOfLocalHeader: (number)}}
+ */
+function readCentralDirectoryEntry(reader, indexForErrors) {
+  const magicNumber = reader.readUint32();
+  if (magicNumber !== centralDirectoryHeaderMagicNumber) {
+    throw new Error(`Invalid SZI file: Central Directory Header ${indexForErrors} has unexpected magic number`);
+  }
+
+  const versionMadeBy = reader.readUint16();
+  const versionNeededToExtract = reader.readUint16();
+  const bitFlag = reader.readUint16();
+  const compressionMethod = reader.readUint16();
+  const lastModFileTime = reader.readUint16();
+  const lastModeFileDate = reader.readUint16();
+  const crc32 = reader.readUint32();
+  const compressedSize = reader.readUint32();
+  const uncompressedSize = reader.readUint32();
+
+  const filenameLength = reader.readUint16();
+  const extraFieldLength = reader.readUint16();
+  const fileCommentLength = reader.readUint16();
+  const diskNumberStart = reader.readUint16();
+  const internalFileAttributes = reader.readUint16();
+  const externalFileAttributes = reader.readUint32();
+  const relativeOffsetOfLocalHeader = reader.readUint32();
+
+  // So, technically, the ZIP file format specifies that the name of files should be encoded
+  // as CP-437 unless the 11th bit of bitFlag is set. But most encoders do use UTF-8 now,
+  // with some of them not setting that flag, and CP-437, being a pre-Windows DOS encoding, isn't
+  // part of the standard set of JS encodings available in the browser. Given that the only name
+  // in the SZI that we are interested is the original image name, and its use in the
+  // imagename/imagename.dzi and imagename_files/ patterns, it's safe enough to read in as UTF-8.
+  //
+  // This might result in some non-ASCII characters being mapped to odd bits of UTF-8, or to the
+  // U+FFFD replacement characters, but this will be done consistently, and the all-important '/',
+  // '_files', and '.dzi' will be conserved, so for the purposes of generating the contents table
+  // and serving up tiles, it's fine if the name looks a little corrupted.
+  const filename = reader.readUtf8String(filenameLength);
+
+  if (compressedSize !== uncompressedSize) {
+    throw new Error(
+      `Invalid SZI file: compressedSize: ${compressedSize} ` +
+        `and uncompressedSize: ${uncompressedSize} don't match for ${filename}!`,
+    );
+  }
+
+  const extraFields = readZip64ExtraFields(reader, extraFieldLength, {
+    compressedSize,
+    uncompressedSize,
+    diskNumberStart,
+    relativeOffsetOfLocalHeader,
+  });
+  const fileComment = reader.readUtf8String(fileCommentLength);
+
+  return {
+    uncompressedSize: extraFields.uncompressedSize,
+    relativeOffsetOfLocalHeader: extraFields.relativeOffsetOfLocalHeader,
+    filename,
+  };
+}
+
+/**
  * Read all the entries in the Central Directory of an SZI file from the supplied arrayBuffer
  *
  * @param {ArrayBuffer} arrayBuffer
@@ -232,62 +303,7 @@ function readCentralDirectory(arrayBuffer, totalEntries) {
   const reader = new LittleEndianDataReader(arrayBuffer);
   const centralDirectory = [];
   for (let i = 0; i < totalEntries; i++) {
-    const magicNumber = reader.readUint32();
-    if (magicNumber !== centralDirectoryHeaderMagicNumber) {
-      throw new Error(`Invalid SZI file: Central Directory Header ${i} has unexpected magic number`);
-    }
-
-    const versionMadeBy = reader.readUint16();
-    const versionNeededToExtract = reader.readUint16();
-    const bitFlag = reader.readUint16();
-    const compressionMethod = reader.readUint16();
-    const lastModFileTime = reader.readUint16();
-    const lastModeFileDate = reader.readUint16();
-    const crc32 = reader.readUint32();
-    const compressedSize = reader.readUint32();
-    const uncompressedSize = reader.readUint32();
-
-    const filenameLength = reader.readUint16();
-    const extraFieldLength = reader.readUint16();
-    const fileCommentLength = reader.readUint16();
-    const diskNumberStart = reader.readUint16();
-    const internalFileAttributes = reader.readUint16();
-    const externalFileAttributes = reader.readUint32();
-    const relativeOffsetOfLocalHeader = reader.readUint32();
-
-    // So, technically, the ZIP file format specifies that the name of files should be encoded
-    // as CP-437 unless the 11th bit of bitFlag is set. But most encoders do use UTF-8 now,
-    // with some of them not setting that flag, and CP-437, being a pre-Windows DOS encoding, isn't
-    // part of the standard set of JS encodings available in the browser. Given that the only name
-    // in the SZI that we are interested is the original image name, and its use in the
-    // imagename/imagename.dzi and imagename_files/ patterns, it's safe enough to read in as UTF-8.
-    //
-    // This might result in some non-ASCII characters being mapped to odd bits of UTF-8, or to the
-    // U+FFFD replacement characters, but this will be done consistently, and the all-important '/',
-    // '_files', and '.dzi' will be conserved, so for the purposes of generating the contents table
-    // and serving up tiles, it's fine if the name looks a little corrupted.
-    const filename = reader.readUtf8String(filenameLength);
-
-    if (compressedSize !== uncompressedSize) {
-      throw new Error(
-        `Invalid SZI file: compressedSize: ${compressedSize} ` +
-          `and uncompressedSize: ${uncompressedSize} don't match for ${filename}!`,
-      );
-    }
-
-    const extraFields = readZip64ExtraFields(reader, extraFieldLength, {
-      compressedSize,
-      uncompressedSize,
-      diskNumberStart,
-      relativeOffsetOfLocalHeader,
-    });
-    const fileComment = reader.readUtf8String(fileCommentLength);
-
-    centralDirectory.push({
-      uncompressedSize: extraFields.uncompressedSize,
-      relativeOffsetOfLocalHeader: extraFields.relativeOffsetOfLocalHeader,
-      filename,
-    });
+    centralDirectory.push(readCentralDirectoryEntry(reader, i));
   }
   return centralDirectory;
 }
@@ -386,42 +402,344 @@ export async function getContentsOfSziFile(sziFile) {
 }
 
 /**
+ * Open a streaming reader over a range of bytes in the supplied file. Prefers the file's
+ * fetchRangeStream if it exists (eg RemoteFile), otherwise falls back to fetchRange and
+ * wraps the result in a single-chunk stream.
+ *
+ * @param {object} sziFile
+ * @param {number} start
+ * @param {number} end
+ * @param {AbortSignal} [abortSignal]
+ * @returns {Promise<ReadableStream<Uint8Array>>}
+ */
+async function openRangeStream(sziFile, start, end, abortSignal) {
+  if (typeof sziFile.fetchRangeStream === 'function') {
+    return sziFile.fetchRangeStream(start, end, abortSignal);
+  }
+  const arrayBuffer = await sziFile.fetchRange(start, end, abortSignal);
+  return new ReadableStream({
+    start(controller) {
+      controller.enqueue(new Uint8Array(arrayBuffer));
+      controller.close();
+    },
+  });
+}
+
+/**
+ * Stream the Central Directory of an SZI file, invoking onEntry for each entry as soon as
+ * enough bytes are available to parse it. This is what lets the tile source start showing
+ * low-magnification tiles before the entire CD has been downloaded.
+ *
+ * @param {object} sziFile
+ * @param {number} centralDirectoryOffset
+ * @param {number} centralDirectorySize
+ * @param {number} totalEntries
+ * @param {(entry: {filename: string, uncompressedSize: number, relativeOffsetOfLocalHeader: number}) => void} onEntry
+ * @param {AbortSignal} [abortSignal]
+ * @returns {Promise<void>}
+ */
+async function streamCentralDirectory(
+  sziFile,
+  centralDirectoryOffset,
+  centralDirectorySize,
+  totalEntries,
+  onEntry,
+  abortSignal,
+) {
+  const stream = await openRangeStream(
+    sziFile,
+    centralDirectoryOffset,
+    centralDirectoryOffset + centralDirectorySize,
+    abortSignal,
+  );
+  const streamReader = stream.getReader();
+
+  // The CD size is known upfront, so we allocate exactly the right buffer once.
+  const buffer = new Uint8Array(centralDirectorySize);
+  let validLength = 0;
+  let cursor = 0;
+  let entriesParsed = 0;
+
+  const tryParseOne = () => {
+    if (validLength - cursor < fixedCentralDirectoryHeaderSize) {
+      return false;
+    }
+
+    // Peek the three length fields without advancing a reader.
+    const peek = new DataView(buffer.buffer, cursor, fixedCentralDirectoryHeaderSize);
+    const filenameLength = peek.getUint16(28, true);
+    const extraFieldLength = peek.getUint16(30, true);
+    const fileCommentLength = peek.getUint16(32, true);
+    const totalEntrySize = fixedCentralDirectoryHeaderSize + filenameLength + extraFieldLength + fileCommentLength;
+
+    if (validLength - cursor < totalEntrySize) {
+      return false;
+    }
+
+    const reader = new LittleEndianDataReader(buffer.buffer);
+    reader.skip(cursor);
+    const entry = readCentralDirectoryEntry(reader, entriesParsed);
+    onEntry(entry);
+    cursor += totalEntrySize;
+    entriesParsed++;
+    return true;
+  };
+
+  try {
+    while (entriesParsed < totalEntries) {
+      // Drain whatever entries we can with what we already have.
+      while (tryParseOne()) {
+        // intentionally empty
+      }
+      if (entriesParsed >= totalEntries) {
+        break;
+      }
+
+      const { done, value } = await streamReader.read();
+      if (done) {
+        throw new Error(
+          `Central Directory stream ended after ${entriesParsed} entries, expected ${totalEntries}`,
+        );
+      }
+      if (validLength + value.length > buffer.length) {
+        throw new Error(
+          `Central Directory stream produced more bytes than expected (${centralDirectorySize})`,
+        );
+      }
+      buffer.set(value, validLength);
+      validLength += value.length;
+    }
+  } finally {
+    // Make sure we release the underlying HTTP connection if anything throws above.
+    try {
+      streamReader.releaseLock();
+    } catch (_) {
+      // ignore
+    }
+  }
+}
+
+/**
  * SziFileReader wraps a remote (or local) SZI file, and allows its users to fetch the uncompressed body of
  * any of the files contained within the supplied SZI file.
  *
  * Note that you should always use the static create constructor to initialise this class, as this is the
  * only supported way of generating the table of contents.
+ *
+ * Internally the Central Directory is parsed progressively: create() resolves as soon as the .dzi entry
+ * has been parsed (which lets OpenSeadragon start rendering low-magnification tiles immediately), while
+ * the remaining entries continue to stream in in the background. fetchFileBody for any entry that has
+ * not yet been parsed will await the streaming parser reaching that entry.
  */
 export class SziFileReader {
   /**
-   * Asynchronously create an instance of a reader for the supplied SZI remote file
-   * @param {RemoteFile} sziFile
+   * Asynchronously create an instance of a reader for the supplied SZI remote file. Resolves once
+   * enough of the Central Directory has been parsed to identify the .dzi entry, even if the rest
+   * of the CD is still streaming in the background.
+   *
+   * @param {object} sziFile
+   * @param {AbortSignal} [abortSignal] cancels the background CD stream if the caller no longer
+   *        needs the reader
    * @returns {Promise<SziFileReader>}
    */
-  static create = async (sziFile) => {
-    const contents = await getContentsOfSziFile(sziFile);
-    return new SziFileReader(sziFile, contents);
+  static create = async (sziFile, abortSignal) => {
+    const reader = new SziFileReader(sziFile);
+    await reader._init(abortSignal);
+    return reader;
   };
 
-  constructor(sziFile, contents) {
+  constructor(sziFile) {
     this.sziFile = sziFile;
-    this.contents = contents;
+    // filename -> { start, bodyLength }. maxEnd is computed lazily from sortedStarts at fetch time.
+    this.contents = new Map();
+    // Sorted ascending array of all start offsets seen so far. Used to determine the upper bound
+    // of an entry's data: the next file start above it, or centralDirectoryOffset if none.
+    this.sortedStarts = [];
+    // filename -> [{resolve, reject}] for fetches whose entry hasn't been parsed yet.
+    this.waiters = new Map();
+    this.dziFilenameValue = null;
+    this.duplicateDziError = null;
+    this.parsingDone = false;
+    this.parsingError = null;
+    this.parsingFinished = null;
+    this.centralDirectoryOffset = null;
+  }
+
+  async _init(abortSignal) {
+    const { totalEntries, centralDirectoryOffset, centralDirectorySize } = await findCentralDirectoryProperties(
+      this.sziFile,
+    );
+    this.centralDirectoryOffset = centralDirectoryOffset;
+
+    let resolveDziReady;
+    let rejectDziReady;
+    const dziReady = new Promise((resolve, reject) => {
+      resolveDziReady = resolve;
+      rejectDziReady = reject;
+    });
+
+    const onEntry = (entry) => {
+      this._addEntry(entry);
+      if (entry.filename.match(/\.dzi$/)) {
+        if (!this.dziFilenameValue) {
+          this.dziFilenameValue = entry.filename;
+          resolveDziReady();
+        } else if (entry.filename !== this.dziFilenameValue && !this.duplicateDziError) {
+          // Surfaced through parsingFinished; the reader is already in use by this point so
+          // we don't roll back the early resolution.
+          this.duplicateDziError = new Error('Multiple .dzi files found in .szi!');
+        }
+      }
+    };
+
+    this.parsingFinished = streamCentralDirectory(
+      this.sziFile,
+      centralDirectoryOffset,
+      centralDirectorySize,
+      totalEntries,
+      onEntry,
+      abortSignal,
+    )
+      .then(() => {
+        this.parsingDone = true;
+        if (!this.dziFilenameValue) {
+          const err = new Error('No dzi file found in .szi!');
+          this.parsingError = err;
+          rejectDziReady(err);
+          this._rejectAllPendingWaiters(err);
+          throw err;
+        }
+        this._rejectAllPendingWaiters();
+        if (this.duplicateDziError) {
+          throw this.duplicateDziError;
+        }
+      })
+      .catch((err) => {
+        if (!this.parsingError) {
+          this.parsingError = err;
+        }
+        this.parsingDone = true;
+        rejectDziReady(err);
+        this._rejectAllPendingWaiters(err);
+        throw err;
+      });
+
+    // Prevent unhandled rejection warnings; consumers can still observe parsingFinished.
+    this.parsingFinished.catch(() => {});
+
+    await dziReady;
+  }
+
+  _addEntry(entry) {
+    if (this.contents.has(entry.filename)) {
+      return;
+    }
+    const location = {
+      start: entry.relativeOffsetOfLocalHeader,
+      bodyLength: entry.uncompressedSize,
+    };
+    this.contents.set(entry.filename, location);
+    this._insertSortedStart(entry.relativeOffsetOfLocalHeader);
+
+    const waitersForName = this.waiters.get(entry.filename);
+    if (waitersForName) {
+      this.waiters.delete(entry.filename);
+      for (const { resolve } of waitersForName) {
+        resolve(location);
+      }
+    }
+  }
+
+  _insertSortedStart(start) {
+    let lo = 0;
+    let hi = this.sortedStarts.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if (this.sortedStarts[mid] < start) {
+        lo = mid + 1;
+      } else {
+        hi = mid;
+      }
+    }
+    this.sortedStarts.splice(lo, 0, start);
+  }
+
+  _computeMaxEnd(start) {
+    // First start strictly greater than `start`. If none, the entry runs up to the CD.
+    let lo = 0;
+    let hi = this.sortedStarts.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if (this.sortedStarts[mid] <= start) {
+        lo = mid + 1;
+      } else {
+        hi = mid;
+      }
+    }
+    if (lo < this.sortedStarts.length) {
+      return this.sortedStarts[lo];
+    }
+    return this.centralDirectoryOffset;
+  }
+
+  _computeFetchUpperBound(location) {
+    // A local file header is 30 fixed bytes + variable filename + variable extra fields, with
+    // each of those lengths a uint16, so each is at most 0xffff. We don't know the exact size
+    // of the local header until we parse it, so cap the worst case here. Add the body length
+    // on top, and we have a tight upper bound that does not depend on having seen any other
+    // entry yet. This matters because during the very first fetches (typically the dzi xml)
+    // the progressive CD parser may not yet have streamed in any entry above us, in which case
+    // _computeMaxEnd would otherwise return centralDirectoryOffset and we would issue a fetch
+    // that spans the entire archive payload.
+    const localHeaderMaxOverhead = 30 + 0xffff + 0xffff;
+    const tightBound = location.start + localHeaderMaxOverhead + location.bodyLength;
+    const sortedBound = this._computeMaxEnd(location.start);
+    return Math.min(tightBound, sortedBound);
+  }
+
+  _rejectAllPendingWaiters(err) {
+    for (const [filename, waitersForName] of this.waiters) {
+      for (const { reject } of waitersForName) {
+        reject(err || new Error(`${filename} is not present inside this .szi file`));
+      }
+    }
+    this.waiters.clear();
+  }
+
+  _waitForEntry(filename) {
+    const existing = this.contents.get(filename);
+    if (existing) {
+      return Promise.resolve(existing);
+    }
+    if (this.parsingError) {
+      return Promise.reject(this.parsingError);
+    }
+    if (this.parsingDone) {
+      return Promise.reject(new Error(`${filename} is not present inside this .szi file`));
+    }
+    return new Promise((resolve, reject) => {
+      let waitersForName = this.waiters.get(filename);
+      if (!waitersForName) {
+        waitersForName = [];
+        this.waiters.set(filename, waitersForName);
+      }
+      waitersForName.push({ resolve, reject });
+    });
   }
 
   /**
-   * Read the body of the filename contained in the SZI file
+   * Read the body of the filename contained in the SZI file. If the entry's Central Directory
+   * record has not yet been streamed in, this awaits the progressive parser reaching it.
    *
    * @param {string} filename filename whose body you want to read
    * @param {AbortSignal} abortSignal AbortController.signal for cancelling the request
    * @returns {Promise<Uint8Array>} The body of the file specified
    */
   fetchFileBody = async (filename, abortSignal) => {
-    const location = this.contents.get(filename);
-    if (!location) {
-      throw new Error(`${filename} is not present inside this .szi file`);
-    }
+    const location = await this._waitForEntry(filename);
+    const maxEnd = this._computeFetchUpperBound(location);
 
-    const arrayBuffer = await this.sziFile.fetchRange(location.start, location.maxEnd, abortSignal);
+    const arrayBuffer = await this.sziFile.fetchRange(location.start, maxEnd, abortSignal);
     const reader = new LittleEndianDataReader(arrayBuffer, 0);
 
     const magicNumber = reader.readUint32();
@@ -450,28 +768,16 @@ export class SziFileReader {
   };
 
   /**
-   * Find the filename of the .dzi config file inside the contents
+   * Find the filename of the .dzi config file inside the contents. After create() resolves this
+   * is guaranteed to be set.
    *
    * @returns {string}
    */
   dziFilename = () => {
-    let dziFilename = '';
-    for (const filename of this.contents.keys()) {
-      // i.e. "something/something.dzi"
-      if (filename.match(/^(.*)\.dzi$/)) {
-        if (dziFilename) {
-          throw new Error('Multiple .dzi files found in .szi!');
-        } else {
-          dziFilename = filename;
-        }
-      }
-    }
-
-    if (!dziFilename) {
+    if (!this.dziFilenameValue) {
       throw new Error('No dzi file found in .szi!');
     }
-
-    return dziFilename;
+    return this.dziFilenameValue;
   };
 
   /**

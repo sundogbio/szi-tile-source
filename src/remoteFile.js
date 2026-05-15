@@ -70,19 +70,14 @@ export class RemoteFile {
   }
 
   /**
-   * Fetch the range of bytes specified. Note that end is *exclusive*, though the header
-   * expects *inclusive* values. This removes the need to continually subtract 1 from
-   * the more usual end-exclusive values used elsewhere.
+   * Issue a Range request for the supplied range and return the underlying response.
    *
    * @param {number} start inclusive start of range to fetch
-   * @param {number} end exclusive start of range to fetch
-   * @param {AbortSignal }abortSignal AbortController signal, optionally specify this if you might want to
-   *        abort the request
-   * @throws Error if the start or end lie outside the file, or if start > end. Also throws
-   *         an error if the request fails with anything other than a status between 200 and
-   *         299.
+   * @param {number} end exclusive end of range to fetch
+   * @param {AbortSignal} [abortSignal]
+   * @returns {Promise<Response>}
    */
-  fetchRange = async (start, end, abortSignal) => {
+  _rangeRequest = async (start, end, abortSignal) => {
     if (start < 0 || start > this.size) {
       throw new Error(`Start of fetch range (${start}) out of bounds (0 - ${this.size})!`);
     }
@@ -112,6 +107,49 @@ export class RemoteFile {
       throw new Error(`Couldn't fetch range ${start}:${end} of ${this.url} status: ${response.status}`);
     }
 
+    return response;
+  };
+
+  /**
+   * Fetch the range of bytes specified. Note that end is *exclusive*, though the header
+   * expects *inclusive* values. This removes the need to continually subtract 1 from
+   * the more usual end-exclusive values used elsewhere.
+   *
+   * @param {number} start inclusive start of range to fetch
+   * @param {number} end exclusive start of range to fetch
+   * @param {AbortSignal }abortSignal AbortController signal, optionally specify this if you might want to
+   *        abort the request
+   * @throws Error if the start or end lie outside the file, or if start > end. Also throws
+   *         an error if the request fails with anything other than a status between 200 and
+   *         299.
+   */
+  fetchRange = async (start, end, abortSignal) => {
+    const response = await this._rangeRequest(start, end, abortSignal);
     return await response.arrayBuffer();
+  };
+
+  /**
+   * Like fetchRange, but returns a ReadableStream over the response body so the caller
+   * can begin parsing bytes as they arrive. Used for streaming the (potentially very
+   * large) Central Directory of an SZI file.
+   *
+   * @param {number} start inclusive start of range to fetch
+   * @param {number} end exclusive end of range to fetch
+   * @param {AbortSignal} [abortSignal]
+   * @returns {Promise<ReadableStream<Uint8Array>>}
+   */
+  fetchRangeStream = async (start, end, abortSignal) => {
+    const response = await this._rangeRequest(start, end, abortSignal);
+    if (!response.body) {
+      // Environments without streaming bodies: fall back to the full buffer wrapped in a stream
+      const buffer = await response.arrayBuffer();
+      return new ReadableStream({
+        start(controller) {
+          controller.enqueue(new Uint8Array(buffer));
+          controller.close();
+        },
+      });
+    }
+    return response.body;
   };
 }

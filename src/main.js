@@ -19,6 +19,12 @@ export const enableSziTileSource = (OpenSeadragon) => {
      * instead of the standard Construct, as the majority of the configuration of the image source happens
      * here asynchronously.
      *
+     * The Central Directory of the SZI file is streamed in progressively. This factory resolves as soon as
+     * the .dzi entry has been parsed, which is typically only a few kB into the CD, so that OpenSeadragon
+     * can begin rendering low-magnification tiles long before the rest of the CD (potentially many MB on
+     * very large images) has finished downloading. Tile fetches for entries not yet parsed will await the
+     * background parser reaching them.
+     *
      * @param {string} url location of the SZI file we want to read
      * @param fetchOptions options to use when making HTTP requests to fetch parts of the file
      * @param fetchOptions.mode cors mode to use. Note that "no-cors" is not accepted, as it breaks Range requests.
