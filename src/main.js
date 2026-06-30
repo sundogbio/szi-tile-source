@@ -25,6 +25,11 @@ export const enableSziTileSource = (OpenSeadragon) => {
      *        (See: https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API/Using_Fetch#making_cross-origin_requests)
      * @param fetchOptions.credentials when and how to pass credentials
      *        (see:https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API/Using_Fetch#including_credentials)
+     * @param fetchOptions.cache request cache mode (see the fetch API). All tiles are Range
+     *        requests against the single SZI file URL; for a cacheable response Chrome takes a
+     *        per-cache-entry exclusive lock and serializes those requests one-at-a-time, which
+     *        is slow over high-latency origins. Pass 'no-store' to bypass the browser HTTP cache
+     *        and let the requests run in parallel.
      * @param fetchOptions.headers additional HTTP headers to send with each request
      * @returns {Promise<SziTileSource>}
      */
