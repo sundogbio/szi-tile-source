@@ -27,9 +27,12 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
+          registry-url: 'https://registry.npmjs.org'
           cache: 'pnpm'
       - name: Install dependencies
         run: pnpm install
+      - name: Run tests
+        run: pnpm run test
       - name: Build library release
         run: pnpm run build
       - name:
@@ -50,3 +53,6 @@ jobs:
           draft: false
           prerelease: false
           generate_release_notes: true
+      - name: Publish
+        id: npm_publish
+        run: npm stage publish
