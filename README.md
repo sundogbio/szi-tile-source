@@ -38,11 +38,17 @@ systems by transparently caching the Central Directory on the client side instea
 
 ### Installation and loading
 
-Releases of the library are
+The library is [published to npm](https://www.npmjs.com/package/szi-tile-source), meaning you can install it with:
+
+    npm install szi-tile-source
+
+or, alternatively, via your `package.json`.
+
+Releases of the library are also
 [published via Github](https://github.com/sundogbio/szi-tile-source/releases); it is published in
 both ES and UMD module format.
 
-Alternatively, you can [build the library yourself](#building-for-distribution).
+Finally, you can [build the library yourself](#building-for-distribution).
 
 #### ES module
 
@@ -69,6 +75,14 @@ import { OpenSeadragon } from 'openseadragon.js';
 import { enableSziTileSource } from './dist/szi-tile-source.js';
 enableSziTileSource(OpenSeadragon);
 ```
+
+If you've installed it via `npm`, then of course
+
+```js
+import { enableSziTileSource } from 'szi-tile-source';
+```
+
+will work correctly.
 
 #### UMD module
 
