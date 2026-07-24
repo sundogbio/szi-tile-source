@@ -9,6 +9,7 @@ on:
 # GITHUB_TOKEN needs write permission
 permissions:
   contents: write
+  id-token: write
 
 env:
   RELEASE_FILENAME: szi-tile-source-${{github.ref_name}}
