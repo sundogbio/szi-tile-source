@@ -56,4 +56,4 @@ jobs:
           generate_release_notes: true
       - name: Publish
         id: npm_publish
-        run: pnpm stage publish --no-git-checks
+        run: pnpm publish --no-git-checks
