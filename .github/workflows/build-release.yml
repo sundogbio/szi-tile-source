@@ -55,4 +55,4 @@ jobs:
           generate_release_notes: true
       - name: Publish
         id: npm_publish
-        run: npm stage publish
+        run: pnpm stage publish
