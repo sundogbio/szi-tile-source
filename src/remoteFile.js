@@ -9,6 +9,10 @@ export class RemoteFile {
    * @param fetchOptions options to apply to all fetches,
    * @param {string} fetchOptions.mode cors mode to use
    * @param {string} fetchOptions.credentials whether to send credentials
+   * @param {string} fetchOptions.cache request cache mode (see the fetch API). Pass
+   *        'no-store' to keep the browser HTTP cache out of the way: Chrome takes a
+   *        per-cache-entry exclusive lock for cacheable responses, so concurrent
+   *        Range requests to the same file URL get serialized one-at-a-time.
    * @param {Object} fetchOptions.headers additional headers to add to all requests
    * @returns {Promise<RemoteFile>}
    */
@@ -25,6 +29,7 @@ export class RemoteFile {
    * @param fetchOptions options to apply to all fetches,
    * @param {string} fetchOptions.mode cors mode to use
    * @param {string} fetchOptions.credentials whether to send credentials
+   * @param {string} fetchOptions.cache request cache mode (see the fetch API)
    * @param {Object} fetchOptions.headers additional headers to add to all requests
    * @returns {Promise<number>}
    */
@@ -35,6 +40,7 @@ export class RemoteFile {
       headers: headers,
       mode: fetchOptions.mode,
       credentials: fetchOptions.credentials,
+      cache: fetchOptions.cache,
     });
 
     if (!response.ok) {
@@ -99,6 +105,7 @@ export class RemoteFile {
       signal: abortSignal,
       mode: this.fetchOptions.mode,
       credentials: this.fetchOptions.credentials,
+      cache: this.fetchOptions.cache,
     });
 
     if (!response.ok) {
