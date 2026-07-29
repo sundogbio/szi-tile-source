@@ -1,6 +1,6 @@
 {
   "name": "szi-tile-source",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "An OpenSeadragon TileSource for remotely hosted SZI files",
   "license": "MIT",
   "homepage": "https://github.com/sundogbio/szi-tile-source",
