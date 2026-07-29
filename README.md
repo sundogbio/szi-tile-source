@@ -126,10 +126,10 @@ OSD options to do with Ajax file download, including: `loadTilesWithAjax`, `ajax
 `ajaxWithCredentials`, and `crossOriginPolicy`.
 
 Instead, it supports a simple `fetchOptions` parameter in its static constructor, where you can
-specify `headers`, `mode`, and `credentials` properties that will be passed straight through to the
-call to `fetch`. See the
+specify `headers`, `mode`, `cache`, and `credentials` properties that will be passed straight through
+to the call to `fetch`. See the
 [Fetch API Mozilla web docs](https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API/Using_Fetch)
-for furhter details on how these work, though note that setting `mode` to `no-cors` is not supported -
+for further details on how these work, though note that setting `mode` to `no-cors` is not supported -
 [see server requirements below](#the-server) for an explanation of why.
 
 ### Requirements and Limitations
