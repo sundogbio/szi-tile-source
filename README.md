@@ -132,6 +132,15 @@ to the call to `fetch`. See the
 for further details on how these work, though note that setting `mode` to `no-cors` is not supported -
 [see server requirements below](#the-server) for an explanation of why.
 
+There is also an `options` parameter for specifying non-fetch options. At present this has only one
+valid member `loadContentsInBackground`. If this is set to `true` the TileSource will be available
+as soon as the .dzi file has been located in the .szi file, and the locations of the other files
+inside the .szie will be continue to be read in the background. If it's unset, then the locations
+of all the files are read before the TileSource is available. Setting it to true means the OSD
+instance should render more quickly, but exposes you to a very slightly greater chance of
+half-rendering a corrupt file. This is currently `false` by default for reasons of backwards
+compatibility.
+
 ### Requirements and Limitations
 
 #### OSD Compatibility
@@ -196,7 +205,8 @@ file and configure the parent `DziTileSource` and b) fetch the image tiles when 
 viewer post-configuration.
 
 For very large SZI files the Central Directory itself can run to many megabytes. Rather than waiting
-for the entire CD to finish downloading before the viewer becomes usable, the response body is
+for the entire CD to finish downloading before the viewer becomes usable, you can choose to load
+the central directory in the background, in which case the response body is
 streamed in and parsed progressively. The `createSziTileSource` factory resolves as soon as the
 `.dzi` entry has been parsed (typically only a few kB into the CD), so that OpenSeadragon can begin
 rendering low-magnification tiles immediately. The remaining entries continue to stream in the
@@ -325,11 +335,12 @@ Directory. So to reliably read in the body of the file, we need to perform the f
 2. Read the header, and discard it
 3. Read the body of the file
 
-When the progressive parser has not yet seen the next entry above the one we want (which is common
-for the very first tile fetches that happen while the CD is still streaming in), we don't have a
-known upper bound to use in step 1. In that case we fall back to a conservative bound derived from
-the maximum possible size of a Local File Header plus the entry's uncompressed body length, so the
-fetch is always well-formed at the cost of occasionally reading a few extra bytes.
+If we are using the loadContentsInBackground option and the progressive parser has not yet seen
+the next entry above the one we want (which is common for the very first tile fetches that happen
+while the CD is still streaming in), we don't have a known upper bound to use in step 1. In that
+case we fall back to a conservative bound derived from the maximum possible size of a Local File
+Header plus the entry's uncompressed body length, so the fetch is always well-formed at the cost
+of occasionally reading a few extra bytes.
 
 We then either parse the body as XML, in the case of the .dzi file, or pass it back to OSD in the
 form of a Blob, in the case of image tiles.

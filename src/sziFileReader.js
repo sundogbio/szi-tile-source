@@ -402,30 +402,6 @@ export async function getContentsOfSziFile(sziFile) {
 }
 
 /**
- * Open a streaming reader over a range of bytes in the supplied file. Prefers the file's
- * fetchRangeStream if it exists (eg RemoteFile), otherwise falls back to fetchRange and
- * wraps the result in a single-chunk stream.
- *
- * @param {object} sziFile
- * @param {number} start
- * @param {number} end
- * @param {AbortSignal} [abortSignal]
- * @returns {Promise<ReadableStream<Uint8Array>>}
- */
-async function openRangeStream(sziFile, start, end, abortSignal) {
-  if (typeof sziFile.fetchRangeStream === 'function') {
-    return sziFile.fetchRangeStream(start, end, abortSignal);
-  }
-  const arrayBuffer = await sziFile.fetchRange(start, end, abortSignal);
-  return new ReadableStream({
-    start(controller) {
-      controller.enqueue(new Uint8Array(arrayBuffer));
-      controller.close();
-    },
-  });
-}
-
-/**
  * Stream the Central Directory of an SZI file, invoking onEntry for each entry as soon as
  * enough bytes are available to parse it. This is what lets the tile source start showing
  * low-magnification tiles before the entire CD has been downloaded.
@@ -446,8 +422,7 @@ async function streamCentralDirectory(
   onEntry,
   abortSignal,
 ) {
-  const stream = await openRangeStream(
-    sziFile,
+  const stream = await sziFile.fetchRangeStream(
     centralDirectoryOffset,
     centralDirectoryOffset + centralDirectorySize,
     abortSignal,
@@ -497,14 +472,10 @@ async function streamCentralDirectory(
 
       const { done, value } = await streamReader.read();
       if (done) {
-        throw new Error(
-          `Central Directory stream ended after ${entriesParsed} entries, expected ${totalEntries}`,
-        );
+        throw new Error(`Central Directory stream ended after ${entriesParsed} entries, expected ${totalEntries}`);
       }
       if (validLength + value.length > buffer.length) {
-        throw new Error(
-          `Central Directory stream produced more bytes than expected (${centralDirectorySize})`,
-        );
+        throw new Error(`Central Directory stream produced more bytes than expected (${centralDirectorySize})`);
       }
       buffer.set(value, validLength);
       validLength += value.length;
@@ -520,137 +491,22 @@ async function streamCentralDirectory(
 }
 
 /**
- * SziFileReader wraps a remote (or local) SZI file, and allows its users to fetch the uncompressed body of
- * any of the files contained within the supplied SZI file.
- *
- * Note that you should always use the static create constructor to initialise this class, as this is the
- * only supported way of generating the table of contents.
- *
- * Internally the Central Directory is parsed progressively: create() resolves as soon as the .dzi entry
- * has been parsed (which lets OpenSeadragon start rendering low-magnification tiles immediately), while
- * the remaining entries continue to stream in in the background. fetchFileBody for any entry that has
- * not yet been parsed will await the streaming parser reaching that entry.
+ * The central directory doesn't indicate where a file's entry ends in the szi file, only where it
+ * ends. This isn't a problem when we have loaded the entire central directory upfront - we just
+ * use the start of the next file as the end of the one we are interested in. But when we are
+ * doing background loading, we might not have the details of the next file. So we need to do
+ * a little bit of extra work to ensure that we don't just read in everything from the start
+ * of our entry until the end, and this class wraps the logic required.
  */
-export class SziFileReader {
-  /**
-   * Asynchronously create an instance of a reader for the supplied SZI remote file. Resolves once
-   * enough of the Central Directory has been parsed to identify the .dzi entry, even if the rest
-   * of the CD is still streaming in the background.
-   *
-   * @param {object} sziFile
-   * @param {AbortSignal} [abortSignal] cancels the background CD stream if the caller no longer
-   *        needs the reader
-   * @returns {Promise<SziFileReader>}
-   */
-  static create = async (sziFile, abortSignal) => {
-    const reader = new SziFileReader(sziFile);
-    await reader._init(abortSignal);
-    return reader;
-  };
-
-  constructor(sziFile) {
-    this.sziFile = sziFile;
-    // filename -> { start, bodyLength }. maxEnd is computed lazily from sortedStarts at fetch time.
-    this.contents = new Map();
+class LocationMaxEndCalculator {
+  constructor(centralDirectoryOffset) {
+    this.centralDirectoryOffset = centralDirectoryOffset;
     // Sorted ascending array of all start offsets seen so far. Used to determine the upper bound
     // of an entry's data: the next file start above it, or centralDirectoryOffset if none.
     this.sortedStarts = [];
-    // filename -> [{resolve, reject}] for fetches whose entry hasn't been parsed yet.
-    this.waiters = new Map();
-    this.dziFilenameValue = null;
-    this.duplicateDziError = null;
-    this.parsingDone = false;
-    this.parsingError = null;
-    this.parsingFinished = null;
-    this.centralDirectoryOffset = null;
   }
 
-  async _init(abortSignal) {
-    const { totalEntries, centralDirectoryOffset, centralDirectorySize } = await findCentralDirectoryProperties(
-      this.sziFile,
-    );
-    this.centralDirectoryOffset = centralDirectoryOffset;
-
-    let resolveDziReady;
-    let rejectDziReady;
-    const dziReady = new Promise((resolve, reject) => {
-      resolveDziReady = resolve;
-      rejectDziReady = reject;
-    });
-
-    const onEntry = (entry) => {
-      this._addEntry(entry);
-      if (entry.filename.match(/\.dzi$/)) {
-        if (!this.dziFilenameValue) {
-          this.dziFilenameValue = entry.filename;
-          resolveDziReady();
-        } else if (entry.filename !== this.dziFilenameValue && !this.duplicateDziError) {
-          // Surfaced through parsingFinished; the reader is already in use by this point so
-          // we don't roll back the early resolution.
-          this.duplicateDziError = new Error('Multiple .dzi files found in .szi!');
-        }
-      }
-    };
-
-    this.parsingFinished = streamCentralDirectory(
-      this.sziFile,
-      centralDirectoryOffset,
-      centralDirectorySize,
-      totalEntries,
-      onEntry,
-      abortSignal,
-    )
-      .then(() => {
-        this.parsingDone = true;
-        if (!this.dziFilenameValue) {
-          const err = new Error('No dzi file found in .szi!');
-          this.parsingError = err;
-          rejectDziReady(err);
-          this._rejectAllPendingWaiters(err);
-          throw err;
-        }
-        this._rejectAllPendingWaiters();
-        if (this.duplicateDziError) {
-          throw this.duplicateDziError;
-        }
-      })
-      .catch((err) => {
-        if (!this.parsingError) {
-          this.parsingError = err;
-        }
-        this.parsingDone = true;
-        rejectDziReady(err);
-        this._rejectAllPendingWaiters(err);
-        throw err;
-      });
-
-    // Prevent unhandled rejection warnings; consumers can still observe parsingFinished.
-    this.parsingFinished.catch(() => {});
-
-    await dziReady;
-  }
-
-  _addEntry(entry) {
-    if (this.contents.has(entry.filename)) {
-      return;
-    }
-    const location = {
-      start: entry.relativeOffsetOfLocalHeader,
-      bodyLength: entry.uncompressedSize,
-    };
-    this.contents.set(entry.filename, location);
-    this._insertSortedStart(entry.relativeOffsetOfLocalHeader);
-
-    const waitersForName = this.waiters.get(entry.filename);
-    if (waitersForName) {
-      this.waiters.delete(entry.filename);
-      for (const { resolve } of waitersForName) {
-        resolve(location);
-      }
-    }
-  }
-
-  _insertSortedStart(start) {
+  addStart(start) {
     let lo = 0;
     let hi = this.sortedStarts.length;
     while (lo < hi) {
@@ -664,7 +520,7 @@ export class SziFileReader {
     this.sortedStarts.splice(lo, 0, start);
   }
 
-  _computeMaxEnd(start) {
+  _findNextStartAfter(start) {
     // First start strictly greater than `start`. If none, the entry runs up to the CD.
     let lo = 0;
     let hi = this.sortedStarts.length;
@@ -682,7 +538,7 @@ export class SziFileReader {
     return this.centralDirectoryOffset;
   }
 
-  _computeFetchUpperBound(location) {
+  calculateMaxEnd(location) {
     // A local file header is 30 fixed bytes + variable filename + variable extra fields, with
     // each of those lengths a uint16, so each is at most 0xffff. We don't know the exact size
     // of the local header until we parse it, so cap the worst case here. Add the body length
@@ -693,30 +549,29 @@ export class SziFileReader {
     // that spans the entire archive payload.
     const localHeaderMaxOverhead = 30 + 0xffff + 0xffff;
     const tightBound = location.start + localHeaderMaxOverhead + location.bodyLength;
-    const sortedBound = this._computeMaxEnd(location.start);
+    const sortedBound = this._findNextStartAfter(location.start);
     return Math.min(tightBound, sortedBound);
   }
+}
 
-  _rejectAllPendingWaiters(err) {
-    for (const [filename, waitersForName] of this.waiters) {
-      for (const { reject } of waitersForName) {
-        reject(err || new Error(`${filename} is not present inside this .szi file`));
-      }
-    }
-    this.waiters.clear();
+/**
+ * If we request a file before we've finished reading the central directory and the file's entry
+ * hasn't yet been read, we need to wait for it to be read. To enable this, this class provides
+ * waiters that can be awaited, and that when the location becomes available will be resolved to it.
+ *
+ * Each file can have multiple waiters on it, and they will all resolve when the location is found.
+ */
+class FileLocationWaiters {
+  constructor() {
+    // filename -> [{resolve, reject}] for fetches whose entry hasn't been parsed yet.
+    this.waiters = new Map();
   }
 
-  _waitForEntry(filename) {
-    const existing = this.contents.get(filename);
-    if (existing) {
-      return Promise.resolve(existing);
-    }
-    if (this.parsingError) {
-      return Promise.reject(this.parsingError);
-    }
-    if (this.parsingDone) {
-      return Promise.reject(new Error(`${filename} is not present inside this .szi file`));
-    }
+  hasWaiterFor(filename) {
+    return this.waiters.has(filename);
+  }
+
+  newWaiterFor(filename) {
     return new Promise((resolve, reject) => {
       let waitersForName = this.waiters.get(filename);
       if (!waitersForName) {
@@ -725,6 +580,250 @@ export class SziFileReader {
       }
       waitersForName.push({ resolve, reject });
     });
+  }
+
+  resolve(filename, location) {
+    const waitersForName = this.waiters.get(filename);
+    if (waitersForName) {
+      this.waiters.delete(filename);
+      for (const { resolve } of waitersForName) {
+        resolve(location);
+      }
+    }
+  }
+
+  rejectAll(err) {
+    for (const [filename, waitersForName] of this.waiters) {
+      for (const { reject } of waitersForName) {
+        reject(err || new Error(`${filename} is not present inside this .szi file`));
+      }
+    }
+    this.waiters.clear();
+  }
+}
+
+/**
+ * Loads the contents of the our szi file by reading the central directory at least partially
+ * in the background. The init function will resolve as soon as entry for the dzi file is
+ * found, meaning that the SziFileReader can be used by the SziTileSource to read the dzi
+ * before the whole directory has been read, in turn meaning that OSD can start trying to
+ * load files as early as possible.
+ */
+class BackgroundLoadedContents {
+  constructor(sziFile) {
+    this.sziFile = sziFile;
+    // filename -> { start, bodyLength }. maxEnd is computed lazily using locationMaxEndCalculator.
+    this.filenamesToLocations = new Map();
+    this.fileLocationWaiters = new FileLocationWaiters();
+    this.locationMaxEndCalculator = null;
+
+    this.dziFilenameValue = null;
+
+    this.parsingDone = false;
+    this.parsingError = null;
+    this.parserPromise = null;
+  }
+
+  async init(abortSignal) {
+    const { totalEntries, centralDirectoryOffset, centralDirectorySize } = await findCentralDirectoryProperties(
+      this.sziFile,
+    );
+    this.locationMaxEndCalculator = new LocationMaxEndCalculator(centralDirectoryOffset);
+
+    // Set up our promise...
+    let resolveDziReady;
+    let rejectDziReady;
+
+    const dziReady = new Promise((resolve, reject) => {
+      resolveDziReady = resolve;
+      rejectDziReady = reject;
+    });
+
+    // ...that will be resolved when we find a dzi file
+    const checkForDziFilename = (filename) => {
+      if (filename.match(/\.dzi$/)) {
+        if (!this.dziFilenameValue) {
+          this.dziFilenameValue = filename;
+          resolveDziReady();
+        } else if (filename !== this.dziFilenameValue && !this.duplicateDziError) {
+          // The reader is already in use by this point but this will cause any
+          // further attempts to fetch file location info to fai with this error
+          throw new Error('Multiple .dzi files found in .szi!');
+        }
+      }
+    };
+
+    // Do the parsing of the central directory
+    const onEntry = (entry) => {
+      this._addLocation(entry);
+      checkForDziFilename(entry.filename);
+    };
+
+    this.parserPromise = streamCentralDirectory(
+      this.sziFile,
+      centralDirectoryOffset,
+      centralDirectorySize,
+      totalEntries,
+      onEntry,
+      abortSignal,
+    )
+      .then(() => {
+        this.parsingDone = true;
+        if (!this.dziFilenameValue) {
+          onParsingError(new Error('No dzi file found in .szi!'));
+        } else {
+          // All waiters for files should have resolved by this point - if not, it means
+          // that the file is not mentioned in the central directory
+          this.fileLocationWaiters.rejectAll();
+        }
+      })
+      .catch((err) => {
+        this.parsingDone = true;
+        onParsingError(err);
+      });
+
+    const onParsingError = (err) => {
+      // If the dzi hasn't been found, this will cause init() to throw the error. If it has,
+      // it will do nothing...
+      rejectDziReady(err);
+
+      //...but subsequent calls to locationOf will error, as will any whose responses
+      // are being awaited
+      this.parsingError = err;
+      this.fileLocationWaiters.rejectAll(err);
+    };
+
+    // Prevent unhandled rejection warnings; consumers can still observe parsingFinished.
+    this.parserPromise.catch(() => {});
+
+    // Block until we find (or fail to find) the dzi
+    await dziReady;
+  }
+
+  _addLocation(entry) {
+    if (this.filenamesToLocations.has(entry.filename)) {
+      return;
+    }
+    const location = {
+      start: entry.relativeOffsetOfLocalHeader,
+      bodyLength: entry.uncompressedSize,
+    };
+    this.filenamesToLocations.set(entry.filename, location);
+
+    this.locationMaxEndCalculator.addStart(entry.relativeOffsetOfLocalHeader);
+
+    if (this.fileLocationWaiters.hasWaiterFor(entry.filename)) {
+      this.fileLocationWaiters.resolve(entry.filename, _augmentLocationWithMaxEnd(location));
+    }
+  }
+
+  _augmentLocationWithMaxEnd(location) {
+    return { ...location, maxEnd: this.locationMaxEndCalculator.calculateMaxEnd(location) };
+  }
+
+  locationOf(filename) {
+    // Always error once there has been a parsing error
+    if (this.parsingError) {
+      return Promise.reject(this.parsingError);
+    }
+
+    const location = this.filenamesToLocations.get(filename);
+    if (location) {
+      return Promise.resolve(this._augmentLocationWithMaxEnd(location));
+    }
+
+    if (this.parsingDone) {
+      return Promise.reject(new Error(`${filename} is not present inside this .szi file`));
+    }
+
+    return this.fileLocationWaiters.newWaiterFor(filename);
+  }
+
+  dziFilename() {
+    return this.dziFilenameValue;
+  }
+}
+
+/**
+ * Loads all the central directory upfront
+ */
+class ForegroundLoadedContents {
+  constructor(sziFile) {
+    this.sziFile = sziFile;
+    this.filenamesToLocations = new Map();
+    this.dziFilenameValue = null;
+  }
+
+  async init() {
+    this.filenamesToLocations = await getContentsOfSziFile(this.sziFile);
+
+    this.dziFilenameValue = '';
+    for (const filename of this.filenamesToLocations.keys()) {
+      // i.e. "something/something.dzi"
+      if (filename.match(/^(.*)\.dzi$/)) {
+        if (this.dziFilenameValue) {
+          throw new Error('Multiple .dzi files found in .szi!');
+        } else {
+          this.dziFilenameValue = filename;
+        }
+      }
+    }
+
+    if (!this.dziFilenameValue) {
+      throw new Error('No dzi file found in .szi!');
+    }
+  }
+
+  async locationOf(filename) {
+    const location = this.filenamesToLocations.get(filename);
+    if (location) {
+      return Promise.resolve(location);
+    }
+    return Promise.reject(new Error(`${filename} is not present inside this .szi file`));
+  }
+
+  dziFilename() {
+    return this.dziFilenameValue;
+  }
+}
+
+/**
+ * SziFileReader wraps a remote (or local) SZI file, and allows its users to fetch the uncompressed body of
+ * any of the files contained within the supplied SZI file.
+ *
+ * Note that you should always use the static create constructor to initialise this class, as this is the
+ * only supported way of generating the table of contents.
+ *
+ * If the loadContentsInBackground flag is set, the Central Directory is parsed progressively: create()
+ * resolves as soon as the .dzi entry has been parsed (which lets OpenSeadragon start rendering
+ * low-magnification tiles immediately), while the remaining entries continue to stream in in the background.
+ * fetchFileBody for any entry that has not yet been parsed will await the streaming parser reaching that entry.
+ *
+ * Otherwise, the Central Directory is read in its entirety before create() resolves, meaning that subsequent
+ * calls to fetchFileBody will only block against the request to fetch the file itself, not the directory look up.
+ */
+export class SziFileReader {
+  /**
+   * Asynchronously create an instance of a reader for the supplied SZI remote file.
+   *
+   * @param {object} sziFile
+   * @param {loadContentsInBackground} parse central directory progressively in the background
+   * @param {AbortSignal} [abortSignal] cancels the background CD stream if the caller no longer
+   *        needs the reader
+   * @returns {Promise<SziFileReader>}
+   */
+  static create = async (sziFile, loadContentsInBackground, abortSignal) => {
+    const contents = loadContentsInBackground
+      ? new BackgroundLoadedContents(sziFile)
+      : new ForegroundLoadedContents(sziFile);
+    await contents.init(abortSignal);
+
+    return new SziFileReader(sziFile, contents);
+  };
+
+  constructor(sziFile, contents) {
+    this.sziFile = sziFile;
+    this.contents = contents;
   }
 
   /**
@@ -736,10 +835,8 @@ export class SziFileReader {
    * @returns {Promise<Uint8Array>} The body of the file specified
    */
   fetchFileBody = async (filename, abortSignal) => {
-    const location = await this._waitForEntry(filename);
-    const maxEnd = this._computeFetchUpperBound(location);
-
-    const arrayBuffer = await this.sziFile.fetchRange(location.start, maxEnd, abortSignal);
+    const location = await this.contents.locationOf(filename);
+    const arrayBuffer = await this.sziFile.fetchRange(location.start, location.maxEnd, abortSignal);
     const reader = new LittleEndianDataReader(arrayBuffer, 0);
 
     const magicNumber = reader.readUint32();
@@ -774,10 +871,11 @@ export class SziFileReader {
    * @returns {string}
    */
   dziFilename = () => {
-    if (!this.dziFilenameValue) {
+    const dziFilename = this.contents.dziFilename();
+    if (!dziFilename) {
       throw new Error('No dzi file found in .szi!');
     }
-    return this.dziFilenameValue;
+    return dziFilename;
   };
 
   /**

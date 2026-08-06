@@ -76,11 +76,32 @@ test('Test contents', async () => {
 
 // Basic E2E check that the tile source can be created and gives sensible values
 // for some standard getters
-test('Test construction', async () => {
+test('Test construction with foreground contents loading', async () => {
   enableSziTileSource(OpenSeadragon);
 
   const sziTileSource = await OpenSeadragon.SziTileSource.createSziTileSource(
     'http://localhost:5173/examples/zipped/mixmas-jpeg.szi',
+  );
+
+  expect(sziTileSource.getTileUrl(0, 0, 0)).toEqual('mixmas/mixmas_files/0/0_0.jpeg');
+  expect(sziTileSource.getTileUrl(10, 2, 2)).toEqual('mixmas/mixmas_files/10/2_2.jpeg');
+
+  expect(sziTileSource.getNumTiles(0)).toEqual({ x: 1, y: 1 });
+  expect(sziTileSource.getNumTiles(11)).toEqual({ x: 5, y: 5 });
+
+  expect(sziTileSource.getTileHeight(11)).toEqual(254);
+  expect(sziTileSource.getTileWidth(11)).toEqual(254);
+});
+
+// Basic E2E check that the tile source can be created and gives sensible values
+// for some standard getters
+test('Test construction with background contents loading', async () => {
+  enableSziTileSource(OpenSeadragon);
+
+  const sziTileSource = await OpenSeadragon.SziTileSource.createSziTileSource(
+    'http://localhost:5173/examples/zipped/mixmas-jpeg.szi',
+    {},
+    { loadContentsInBackground: true },
   );
 
   expect(sziTileSource.getTileUrl(0, 0, 0)).toEqual('mixmas/mixmas_files/0/0_0.jpeg');
