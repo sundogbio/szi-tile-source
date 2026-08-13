@@ -410,3 +410,5 @@ Central Directory was heavily inspired by Tom Armitage's
 The overall shape of the `SziTileSource` itself was inspired by the
 [GeoTIFFTileSource](https://github.com/pearcetm/GeoTIFFTileSource) library, in particular the use of
 a factory constructor to handle the relatively heavyweight initialisation.
+
+The progressive loading of SZI directory contents is in large part by [Joonas Palosuo](https://github.com/Jonesus)
