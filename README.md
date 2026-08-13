@@ -132,13 +132,22 @@ to the call to `fetch`. See the
 for further details on how these work, though note that setting `mode` to `no-cors` is not supported -
 [see server requirements below](#the-server) for an explanation of why.
 
+There is also an `options` parameter for specifying non-fetch options. At present this has only one
+valid member `loadContentsInBackground`. If this is set to `true` the TileSource will be available
+as soon as the .dzi file has been located in the .szi file, and the locations of the other files
+inside the .szi will be continue to be read in the background. If it's unset, then the locations
+of all the files are read before the TileSource is available. Setting it to `true` means the OSD
+instance should render more quickly, but exposes you to a very slightly greater chance of
+half-rendering a corrupt file. The default is currently `false` for reasons of backwards
+compatibility.
+
 ### Requirements and Limitations
 
 #### OSD Compatibility
 
-SziTileSource as originally written to work with version 5.x.x of OSD. It has been tested and tested against 5.0.0 and 5.0.1.
+SziTileSource as originally written to work with version 5.x.x of OSD. It was tested against 5.0.0 and 5.0.1.
 
-It is also compatible with 6.0.0 - the next forthcoming release - and [its changes to the caching system and data pipeline](https://github.com/openseadragon/openseadragon/discussions/2637)
+It is also compatible with (and tested against) 6.0.x and [its changes to the caching system and data pipeline](https://github.com/openseadragon/openseadragon/discussions/2637)
 
 #### The file
 
@@ -189,11 +198,20 @@ fundamental mechanism that this library depends on.
 
 By setting the Range header on GET requests, we can fetch subsections of
 the SZI file, rather than hauling down the whole thing. When creating the `SziTileSource`, we use
-this technique to fetch the SZI's Central Directory, processing it to create a contents table that
+this technique to fetch the SZI's Central Directory (CD), processing it to create a contents table that
 contains the start and end locations of all the files contained within the SZI. We then use the
 contents table together with the same ranged requests technique to a) fetch the body of the .dzi
 file and configure the parent `DziTileSource` and b) fetch the image tiles when requested by the OSD
 viewer post-configuration.
+
+For very large SZI files the Central Directory itself can run to many megabytes. Rather than waiting
+for the entire CD to finish downloading before the viewer becomes usable, you can choose to load
+the Central Directory in the background, in which case the response body is
+streamed in and parsed progressively. The `createSziTileSource` factory resolves as soon as the
+`.dzi` entry has been parsed (typically only a few kB into the CD), so that OpenSeadragon can begin
+rendering low-magnification tiles immediately. The remaining entries continue to stream in the
+background; tile fetches for entries that have not yet been parsed transparently await the parser
+reaching them.
 
 While the basic idea is simple, in practice, the implementation details turn out to be a little more
 complex.
@@ -292,8 +310,13 @@ goes like this:
    Central Directory, its length in bytes, and its number of entries
 
 To read the CentralDirectory is comparatively easy: we just do a range GET from its start to finish
-and then read in the entries sequentially. Note that these are again variable length, so to get the
-location of the nth file in the ZIP, you have to read the preceding n-1 entries.
+and parse the entries out of the response body as it streams in. The entries are variable
+length, so the location of the nth entry is only known once the preceding n-1 have been read; the
+upside of streaming is that as soon as we have parsed the `.dzi` entry we can resolve the
+`SziTileSource` and start serving any tiles whose entries have already been seen, even while the
+rest of the CD is still downloading. Entries are stored in a map keyed by filename as they arrive,
+and any fetch for an entry that has not yet been parsed registers a waiter that the streaming parser
+resolves when it reaches that entry.
 
 Hopefully this demonstrates why finding the location of each tile from scratch every time we want to
 load it is impractical!
@@ -311,6 +334,13 @@ Directory. So to reliably read in the body of the file, we need to perform the f
    file's header.
 2. Read the header, and discard it
 3. Read the body of the file
+
+If we are using the `loadContentsInBackground` option and the progressive parser has not yet seen
+the next entry above the one we want (which is common for the very first tile fetches that happen
+while the CD is still streaming in), we don't have a known upper bound to use in step 1. In that
+case we fall back to a conservative bound derived from the maximum possible size of a Local File
+Header plus the entry's uncompressed body length, so the fetch is always well-formed at the cost
+of occasionally reading a few extra bytes.
 
 We then either parse the body as XML, in the case of the .dzi file, or pass it back to OSD in the
 form of a Blob, in the case of image tiles.
@@ -380,3 +410,5 @@ Central Directory was heavily inspired by Tom Armitage's
 The overall shape of the `SziTileSource` itself was inspired by the
 [GeoTIFFTileSource](https://github.com/pearcetm/GeoTIFFTileSource) library, in particular the use of
 a factory constructor to handle the relatively heavyweight initialisation.
+
+The progressive loading of SZI directory contents is in large part by [Joonas Palosuo](https://github.com/Jonesus)

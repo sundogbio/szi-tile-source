@@ -31,19 +31,27 @@ export const enableSziTileSource = (OpenSeadragon) => {
      *        is slow over high-latency origins. Pass 'no-store' to bypass the browser HTTP cache
      *        and let the requests run in parallel.
      * @param fetchOptions.headers additional HTTP headers to send with each request
+     * @param options additional options for configuring the broader behaviour of the source
+     * @param options.loadContentsInBackground if this is set the Central Directory of the SZI file is streamed
+     *        in progressively. This factory resolves as soon as the .dzi entry has been parsed, which is
+     *        typically only a few kB into the CD, so that OpenSeadragon can begin rendering low-magnification
+     *        tiles long before the rest of the CD (potentially many MB on very large images) has finished
+     *        downloading. Tile fetches for entries not yet parsed will await the
+     *        background parser reaching them.
+     *
      * @returns {Promise<SziTileSource>}
      */
-    static createSziTileSource = async (url, fetchOptions = {}) => {
+    static createSziTileSource = async (url, fetchOptions = {}, options = {}) => {
       if (fetchOptions && fetchOptions.mode === 'no-cors') {
         throw new Error("'no-cors' mode is not supported, as Range headers don't work with it");
       }
 
       const remoteSziFile = await RemoteFile.create(url, fetchOptions);
-      const remoteSziReader = await SziFileReader.create(remoteSziFile);
+      const remoteSziReader = await SziFileReader.create(remoteSziFile, options.loadContentsInBackground);
 
-      const options = await this.readOptionsFromDziXml(remoteSziReader);
+      const dziOptions = await this.readOptionsFromDziXml(remoteSziReader);
 
-      return new SziTileSource(remoteSziReader, options);
+      return new SziTileSource(remoteSziReader, dziOptions);
     };
 
     static async readOptionsFromDziXml(remoteSziReader) {
