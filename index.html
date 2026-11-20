@@ -81,6 +81,32 @@
       </script>
     </section>
     <section>
+      <h2>szi jpeg, background contents</h2>
+      <div id="osd-szi-jpeg-background" class="osd"></div>
+      <script type="module">
+        const sziUrl = 'examples/zipped/mixmas-jpeg.szi';
+        OpenSeadragon.SziTileSource.createSziTileSource(
+          sziUrl,
+          {
+            headers: {
+              "X-bobbins": "what a load of bobbins"
+            },
+            mode: "cors",
+            credentials: "omit"
+          },
+          {
+            loadContentsInBackground: true
+          }).then(async tileSource => {
+            const viewer = new OpenSeadragon.Viewer({
+              id: "osd-szi-jpeg-background",
+              prefixUrl: "https://cdnjs.cloudflare.com/ajax/libs/openseadragon/5.0.1/images/",
+              tileSources: [tileSource],
+            });
+
+          })
+      </script>
+    </section>
+    <section>
       <h2>szi jpeg, manually zipped</h2>
       <div id="osd-szi-jpeg-manually-zipped" class="osd"></div>
       <script type="module">

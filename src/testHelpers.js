@@ -60,4 +60,14 @@ export class LocalFile {
       fileHandle.close();
     }
   };
+
+  fetchRangeStream = async (start, end, abortSignal) => {
+    const arrayBuffer = await this.fetchRange(start, end, abortSignal);
+    return new ReadableStream({
+      start(controller) {
+        controller.enqueue(new Uint8Array(arrayBuffer));
+        controller.close();
+      },
+    });
+  };
 }
